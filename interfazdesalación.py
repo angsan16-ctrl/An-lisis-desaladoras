@@ -34,8 +34,92 @@ from openpyxl.drawing.image import Image as xlImage
 # -------------------------
 # Configuración de la app
 # -------------------------
-st.set_page_config(page_title="Análisis Desaladoras", layout="wide")
-st.markdown("<h1 style='color:#0B1A33'>Análisis desaladoras</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="Análisis desaladoras", layout="wide")
+
+# Título principal en azul oscuro
+st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allow_html=True)
+
+# Estilo global: colores, headers, botones
+st.markdown("""
+<style>
+
+  /* =========================================================
+     0. FONDO GENERAL → BLANCO
+     ========================================================= */
+  html, body, .block-container, [class*="stApp"] {
+      background-color: #FFFFFF !important;  /* blanco */
+      color: #333333 !important;             /* texto gris oscuro */
+  }
+
+  /* =========================================================
+     1. TITULOS GRANDES → NARANJA REPSOL
+     ========================================================= */
+  h1, h2, h3, h4, h5, h6 {
+      color: #D98B3B !important;     /* naranja Repsol */
+      font-weight: 800 !important;
+  }
+
+  /* =========================================================
+     2. TITULOS AZUL OSCURO (solo si tú lo marcas con clase)
+     ========================================================= */
+  .darkblue-title {
+      color: #0B1A33 !important;     /* azul oscuro */
+      font-weight: 800 !important;
+  }
+
+  /* =========================================================
+     3. WIDGETS → letra gris oscuro
+     ========================================================= */
+  .stSelectbox label,
+  .stMultiSelect label,
+  .stNumberInput label,
+  .stSlider label,
+  .stTextInput label {
+      color: #333333 !important;
+  }
+
+  .css-16idsys, .css-1pndypt, .css-1offfwp, .css-1kyxreq {
+      color: #333333 !important;
+  }
+
+  .stSelectbox div[data-baseweb="select"],
+  .stMultiSelect div[data-baseweb="select"] {
+      background-color: white !important;
+      color: #333333 !important;
+  }
+
+  /* =========================================================
+     4. TABS → gris / ROJO seleccionada
+     ========================================================= */
+  .stTabs [data-baseweb="tab"] p {
+      color: #666666 !important;   /* gris */
+      font-weight: 600 !important;
+  }
+
+  .stTabs [aria-selected="true"] p {
+      color: red !important;       /* ROJO al seleccionar */
+      font-weight: 700 !important;
+  }
+
+  .stTabs [data-baseweb="tab"] {
+      background-color: #FFFFFF !important; /* fondo blanco */
+  }
+
+  /* =========================================================
+     5. Botones → NARANJAS
+     ========================================================= */
+  .stButton>button {
+      background-color: #D98B3B !important;
+      color: white !important;
+      border-radius: 8px;
+  }
+  .stButton>button:hover {
+      background-color: #b57830 !important;
+      color: white !important;
+  }
+
+</style>
+""", unsafe_allow_html=True)
 
 # -------------------------
 # Intento cargar módulo original (si existe en /mnt/data)
