@@ -1,15 +1,15 @@
-# app_desalacion_unificado_largo.py
-# Interfaz Streamlit unificada y extensa para análisis de desaladoras
-# - Integra la lógica del 'Programa Eficiencias de desalacion2.py'
-# - Reproduce exactamente la construcción de "variables base" que usa el programa principal
+﻿# app_desalacion_unificado_largo.py
+# Interfaz Streamlit unificada y extensa para anÃ¡lisis de desaladoras
+# - Integra la lÃ³gica del 'Programa Eficiencias de desalacion2.py'
+# - Reproduce exactamente la construcciÃ³n de "variables base" que usa el programa principal
 # - Lee Excel sin cabeceras fijas y procesa todos los datos
-# - Si hay +1 desalador, el desplegable mostrará solo los nombres básicos (sin C11, etc.)
+# - Si hay +1 desalador, el desplegable mostrarÃ¡ solo los nombres bÃ¡sicos (sin C11, etc.)
 #
 # Guarda como app_desalacion_unificado_largo.py y ejecuta:
 #    streamlit run app_desalacion_unificado_largo.py
 #
-# Autor: Integración a partir de los archivos proporcionados por el usuario.
-# Fecha: generada automáticamente por el asistente.
+# Autor: IntegraciÃ³n a partir de los archivos proporcionados por el usuario.
+# Fecha: generada automÃ¡ticamente por el asistente.
 
 import os
 import sys
@@ -32,22 +32,22 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as xlImage
 
 # -------------------------
-# Configuración de la app
+# ConfiguraciÃ³n de la app
 # -------------------------
 # -------------------------
-# Configuración básica y estilo
+# ConfiguraciÃ³n bÃ¡sica y estilo
 # -------------------------
-st.set_page_config(page_title="Análisis desaladoras", layout="wide")
+st.set_page_config(page_title="AnÃ¡lisis desaladoras", layout="wide")
 
-# Título principal en azul oscuro
-st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allow_html=True)
+# TÃ­tulo principal en azul oscuro
+st.markdown("<h1 class='darkblue-title'>AnÃ¡lisis desaladoras</h1>", unsafe_allow_html=True)
 
 # Estilo global: colores, headers, botones
 st.markdown("""
 <style>
 
   /* =========================================================
-     0. FONDO GENERAL → BLANCO
+     0. FONDO GENERAL â†’ BLANCO
      ========================================================= */
   html, body, .block-container, [class*="stApp"] {
       background-color: #FFFFFF !important;  /* blanco */
@@ -55,7 +55,7 @@ st.markdown("""
   }
 
   /* =========================================================
-     1. TITULOS GRANDES → NARANJA REPSOL
+     1. TITULOS GRANDES â†’ NARANJA REPSOL
      ========================================================= */
   h1, h2, h3, h4, h5, h6 {
       color: #D98B3B !important;     /* naranja Repsol */
@@ -63,7 +63,7 @@ st.markdown("""
   }
 
   /* =========================================================
-     2. TITULOS AZUL OSCURO (solo si tú lo marcas con clase)
+     2. TITULOS AZUL OSCURO (solo si tÃº lo marcas con clase)
      ========================================================= */
   .darkblue-title {
       color: #0B1A33 !important;     /* azul oscuro */
@@ -71,7 +71,7 @@ st.markdown("""
   }
 
   /* =========================================================
-     3. WIDGETS → letra gris oscuro
+     3. WIDGETS â†’ letra gris oscuro
      ========================================================= */
   .stSelectbox label,
   .stMultiSelect label,
@@ -92,7 +92,7 @@ st.markdown("""
   }
 
   /* =========================================================
-     4. TABS → gris / ROJO seleccionada
+     4. TABS â†’ gris / ROJO seleccionada
      ========================================================= */
   .stTabs [data-baseweb="tab"] p {
       color: #666666 !important;   /* gris */
@@ -109,7 +109,7 @@ st.markdown("""
   }
 
   /* =========================================================
-     5. Botones → NARANJAS
+     5. Botones â†’ NARANJAS
      ========================================================= */
   .stButton>button {
       background-color: #D98B3B !important;
@@ -125,7 +125,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------
-# Intento cargar módulo original (si existe en /mnt/data)
+# Intento cargar mÃ³dulo original (si existe en /mnt/data)
 # -------------------------
 MODULE_PATH = Path("/mnt/data/Programa Eficiencias de desalacion2.py")
 user_mod = None
@@ -135,20 +135,20 @@ if MODULE_PATH.exists():
         user_mod = importlib.util.module_from_spec(spec)
         sys.modules["prog_desal"] = user_mod
         spec.loader.exec_module(user_mod)
-        st.sidebar.success(f"Módulo original cargado desde {MODULE_PATH}")
+        st.sidebar.success(f"MÃ³dulo original cargado desde {MODULE_PATH}")
     except Exception as e:
-        st.sidebar.error(f"No se pudo cargar módulo original: {e}")
+        st.sidebar.error(f"No se pudo cargar mÃ³dulo original: {e}")
 else:
-    st.sidebar.info("No se encontró el módulo original en /mnt/data; utilizando implementaciones internas.")
+    st.sidebar.info("No se encontrÃ³ el mÃ³dulo original en /mnt/data; utilizando implementaciones internas.")
 
 def safe_get(name, fallback=None):
-    """Si se cargó el módulo original, devuelve la función exportada; si no, devuelve fallback."""
+    """Si se cargÃ³ el mÃ³dulo original, devuelve la funciÃ³n exportada; si no, devuelve fallback."""
     if user_mod is None:
         return fallback
     return getattr(user_mod, name, fallback)
 
 # -------------------------
-# Utilidades (tomadas de tu código original)
+# Utilidades (tomadas de tu cÃ³digo original)
 # -------------------------
 def normalizar(txt):
     if txt is None:
@@ -166,7 +166,7 @@ def clean_token(s):
     return s.lower()
 
 def make_unique(col_list: List[str]) -> List[str]:
-    """Convierte nombres a únicos añadiendo sufijos __N cuando sea necesario"""
+    """Convierte nombres a Ãºnicos aÃ±adiendo sufijos __N cuando sea necesario"""
     seen = {}
     out = []
     for c in col_list:
@@ -197,7 +197,7 @@ def leer_hoja_sin_encabezado(path_excel: str, nombre_hoja: str) -> pd.DataFrame:
 
 def detectar_fila_inicio_datos_fallback(df_raw: pd.DataFrame) -> int:
     """
-    Heurística para detectar la fila donde comienzan los datos.
+    HeurÃ­stica para detectar la fila donde comienzan los datos.
     Copiado de tu programa original.
     """
     palabras_ruido = [
@@ -249,7 +249,7 @@ def detectar_fila_inicio_datos_fallback(df_raw: pd.DataFrame) -> int:
 
     return 0
 
-# Puede venir del módulo original
+# Puede venir del mÃ³dulo original
 detectar_fila_inicio_datos = safe_get('detectar_fila_inicio_datos', detectar_fila_inicio_datos_fallback)
 
 # -------------------------
@@ -341,7 +341,7 @@ def construir_nombres_columnas_fallback(df_raw, col_inicio=0, col_fin=None, fila
 construir_nombres_columnas = safe_get('construir_nombres_columnas', construir_nombres_columnas_fallback)
 
 # -------------------------
-# Mapeo variables base y normalización
+# Mapeo variables base y normalizaciÃ³n
 # -------------------------
 def construir_mapa_variables_base_fallback(nombres: List[str]) -> Tuple[Dict[str, List[str]], Dict[str, List[Tuple[str,str]]]]:
     mapa_variable_a_columnas = {}
@@ -362,7 +362,7 @@ def construir_mapa_variables_base_fallback(nombres: List[str]) -> Tuple[Dict[str
 construir_mapa_variables_base = safe_get('construir_mapa_variables_base', construir_mapa_variables_base_fallback)
 
 # -------------------------
-# Limpieza numérica robusta
+# Limpieza numÃ©rica robusta
 # -------------------------
 def limpiar_serie_a_numero_fallback(serie: pd.Series) -> pd.Series:
     s = serie.astype(str).fillna("").str.strip()
@@ -409,7 +409,7 @@ def limpiar_serie_a_numero_fallback(serie: pd.Series) -> pd.Series:
 limpiar_serie_a_numero = safe_get('limpiar_serie_a_numero', limpiar_serie_a_numero_fallback)
 
 # -------------------------
-# Limpieza y construcción DataFrame principal
+# Limpieza y construcciÃ³n DataFrame principal
 # -------------------------
 def limpiar_dataframe_numerico_fallback(datos_base_raw: pd.DataFrame, lista_nombres: List[str],
                                        df_raw: pd.DataFrame=None, indice_fila_inicio: int=None,
@@ -439,7 +439,7 @@ def limpiar_dataframe_numerico_fallback(datos_base_raw: pd.DataFrame, lista_nomb
                 df = df.drop(columns=["Tiempo"])
             df.insert(0, "Tiempo", tiempos)
         except Exception as e:
-            print("⚠️ Error al reconstruir Tiempo:", e)
+            print("âš ï¸ Error al reconstruir Tiempo:", e)
     return df
 
 limpiar_dataframe_numerico = safe_get('limpiar_dataframe_numerico', limpiar_dataframe_numerico_fallback)
@@ -524,12 +524,12 @@ def obtener_columnas_base_por_desalador(variable_base: str, mapa_norm_columns: D
     return resultado
 
 # -------------------------
-# Análisis crítico extendido (internal)
+# AnÃ¡lisis crÃ­tico extendido (internal)
 # -------------------------
 def analisis_critico_extendido_internal(datos: pd.DataFrame, desaladores: List[str], variable_base: str,
                                         valor_critico: float, carpeta_salida: str, mapa_norm_columns: Dict[str, List[Tuple[str,str]]]):
     if 'Tiempo' not in datos.columns:
-        raise ValueError("No se encontró la columna 'Tiempo' en los datos.")
+        raise ValueError("No se encontrÃ³ la columna 'Tiempo' en los datos.")
 
     grupos, comunes = separar_variables_por_desalador(list(datos.columns.drop('Tiempo')), desaladores)
     resultados = {}
@@ -628,7 +628,7 @@ def generar_graficas_por_desalador_internal(datos: pd.DataFrame, desaladores: Li
             continue
         col_base = mapping_base.get(d)
         if col_base is None:
-            print(f"No se encontró columna base '{variable_base}' para desalador {d}.")
+            print(f"No se encontrÃ³ columna base '{variable_base}' para desalador {d}.")
             continue
         df_sub = datos[['Tiempo'] + cols].copy()
         for c in cols:
@@ -637,7 +637,7 @@ def generar_graficas_por_desalador_internal(datos: pd.DataFrame, desaladores: Li
         wb = Workbook()
         ws0 = wb.active
         ws0.title = "Resumen"
-        ws0["A1"] = f"Gráficas desalador {d} (base: {col_base})"
+        ws0["A1"] = f"GrÃ¡ficas desalador {d} (base: {col_base})"
         for c in cols:
             if c == col_base:
                 continue
@@ -688,7 +688,7 @@ def generar_graficas_por_desalador_internal(datos: pd.DataFrame, desaladores: Li
 generar_graficas_por_desalador = safe_get('generar_graficas_por_desalador', generar_graficas_por_desalador_internal)
 
 # -------------------------
-# Detección simple tokens tipo fecha
+# DetecciÃ³n simple tokens tipo fecha
 # -------------------------
 def es_token_fecha_like(token):
     if token is None:
@@ -698,7 +698,7 @@ def es_token_fecha_like(token):
         return True
     if re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", t):
         return True
-    # otras heurísticas:
+    # otras heurÃ­sticas:
     if re.match(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$", t):
         return True
     return False
@@ -707,15 +707,15 @@ def es_token_fecha_like(token):
 # UI: Sidebar
 # -------------------------
 st.sidebar.header("Entradas")
-uploaded = st.sidebar.file_uploader("Sube archivo Excel de desalación", type=["xlsx", "xls"], help="Archivo con la estructura del programa original (se leen todas las filas)")
+uploaded = st.sidebar.file_uploader("Sube archivo Excel de desalaciÃ³n", type=["xlsx", "xls"], help="Archivo con la estructura del programa original (se leen todas las filas)")
 st.sidebar.markdown("---")
-st.sidebar.header("Parámetros visuales")
+st.sidebar.header("ParÃ¡metros visuales")
 fig_w = st.sidebar.slider("Ancho figura", 6, 18, 10)
 fig_h = st.sidebar.slider("Alto figura", 4, 12, 6)
 st.sidebar.markdown("---")
-st.sidebar.caption("Si colocas el módulo 'Programa Eficiencias de desalacion2.py' en /mnt/data/ la app intentará reutilizar sus funciones.")
+st.sidebar.caption("Si colocas el mÃ³dulo 'Programa Eficiencias de desalacion2.py' en /mnt/data/ la app intentarÃ¡ reutilizar sus funciones.")
 
-# Mostrar logo opcional si está
+# Mostrar logo opcional si estÃ¡
 logo_path = Path("logo_repsol.png")
 if logo_path.exists():
     try:
@@ -739,9 +739,9 @@ if logo_path.exists():
 # Main: cuando hay upload
 # -------------------------
 if uploaded is None:
-    st.info("Sube un archivo Excel para comenzar. La app leerá todas las filas y reconstruirá nombres y variables.")
+    st.info("Sube un archivo Excel para comenzar. La app leerÃ¡ todas las filas y reconstruirÃ¡ nombres y variables.")
 else:
-    tab1, tab2 = st.tabs(["Graficado de variables", "Análisis Avanzado"])
+    tab1, tab2 = st.tabs(["Graficado de variables", "AnÃ¡lisis Avanzado"])
 
     with tab1:
             # Guardar temporalmente
@@ -760,29 +760,29 @@ else:
                 hoja_sel = st.selectbox("Selecciona hoja", hojas)
                 try:
                     df_raw = pd.read_excel(tmp_path, sheet_name=hoja_sel, header=None, engine="openpyxl")
-                    st.success(f"Hoja '{hoja_sel}' leída: filas={df_raw.shape[0]} columnas={df_raw.shape[1]}")
+                    st.success(f"Hoja '{hoja_sel}' leÃ­da: filas={df_raw.shape[0]} columnas={df_raw.shape[1]}")
                 except Exception as e:
                     st.error(f"Error leyendo hoja seleccionada: {e}")
                     df_raw = None
 
                 if df_raw is not None:
-                    # Detectar fila inicio usando la función real si está (o fallback)
+                    # Detectar fila inicio usando la funciÃ³n real si estÃ¡ (o fallback)
                     try:
                         fila_inicio = detectar_fila_inicio_datos(df_raw)
                     except Exception:
                         fila_inicio = detectar_fila_inicio_datos_fallback(df_raw)
                     st.write(f"Fila de inicio detectada (index base 0): {fila_inicio}")
 
-                    # Determinar índices de filas donde podríamos tener desalador/variable
+                    # Determinar Ã­ndices de filas donde podrÃ­amos tener desalador/variable
                     # ============================================
-                    # 🔧 BLOQUE CORREGIDO PARA FIJAR ENCABEZADOS
+                    # ðŸ”§ BLOQUE CORREGIDO PARA FIJAR ENCABEZADOS
                     # ============================================
             
                     fila_desalador_idx = 0
                     fila_variable_idx = 1
                     fila_inicio = detectar_fila_inicio_datos(df_raw)
 
-                    # Construir nombres de columnas (usando función original si existe)
+                    # Construir nombres de columnas (usando funciÃ³n original si existe)
                     try:
                         nombres_col, desaladores_por_col = construir_nombres_columnas(df_raw, col_inicio=1, col_fin=df_raw.shape[1],
                                                                                       fila_desalador_idx=fila_desalador_idx,
@@ -798,7 +798,7 @@ else:
                         datos_vals[c] = limpiar_serie_a_numero(datos_vals[c])
                     datos = datos_vals.copy()
                     # ======================================================
-                    # 🔥 FILTRO STREAMLIT-SEGURO: SOLO EFICIENCIA POSITIVA
+                    # ðŸ”¥ FILTRO STREAMLIT-SEGURO: SOLO EFICIENCIA POSITIVA
                     # ======================================================
             
                     # Localizar columna de eficiencia (busca cualquier nombre que contenga estos tokens)
@@ -819,7 +819,7 @@ else:
 
             
                     if col_eff:
-                        # Convertir a numérico
+                        # Convertir a numÃ©rico
                         datos[col_eff] = pd.to_numeric(datos[col_eff], errors='coerce')
                         # Aplicar filtro SOLO en la eficiencia
                         datos.loc[datos[col_eff] <= 0, col_eff] = np.nan
@@ -843,20 +843,20 @@ else:
                     except Exception:
                         mapa_variable_a_columnas, mapa_norm_columns = construir_mapa_variables_base_fallback(nombres_col)
 
-                    # Detectar desaladores presentes a partir de nombres_col (patrón C#)
+                    # Detectar desaladores presentes a partir de nombres_col (patrÃ³n C#)
                     # ======================================================
-                    # 🔷 Pregunta al usuario si quiere buscar varios desaladores
+                    # ðŸ”· Pregunta al usuario si quiere buscar varios desaladores
                     # ======================================================
             
                     st.sidebar.markdown("---")
                     forzar_general = st.sidebar.radio(
-                        "¿Quieres que la app busque varios desaladores?",
-                        ["No, usar un solo desalador (GENERAL)", "Sí, detectar varios desaladores automáticamente"],
+                        "Â¿Quieres que la app busque varios desaladores?",
+                        ["No, usar un solo desalador (GENERAL)", "SÃ­, detectar varios desaladores automÃ¡ticamente"],
                         index=0
                     )
 
                     # ======================================================
-                    # 🔥 DETECCIÓN AUTOMÁTICA DE DESALADORES (STREAMLIT)
+                    # ðŸ”¥ DETECCIÃ“N AUTOMÃTICA DE DESALADORES (STREAMLIT)
                     # ======================================================
             
                     desaladores_detectados = set()
@@ -870,13 +870,13 @@ else:
             
                     desaladores_detectados = sorted(list(desaladores_detectados))
             
-                    # --- Lógica automática ---
+                    # --- LÃ³gica automÃ¡tica ---
                     if len(desaladores_detectados) == 0:
                         desal_sel = ["GENERAL"]
                     elif len(desaladores_detectados) == 1:
                         desal_sel = ["GENERAL"]
                     else:
-                        # varios desaladores → permitir selección en sidebar
+                        # varios desaladores â†’ permitir selecciÃ³n en sidebar
                         st.sidebar.markdown("---")
                         st.sidebar.info(f"Detectados varios desaladores: {', '.join(desaladores_detectados)}")
                         desal_sel = st.sidebar.multiselect(
@@ -885,7 +885,7 @@ else:
                             default=desaladores_detectados
                         )
 
-                    # ===== Construcción REAL de variables base (igual que tu programa principal) =====
+                    # ===== ConstrucciÃ³n REAL de variables base (igual que tu programa principal) =====
                     mapa_variable_keys = list(mapa_variable_a_columnas.keys()) if mapa_variable_a_columnas else []
                     variables_base = list(mapa_variable_keys)
 
@@ -912,7 +912,7 @@ else:
                         st.sidebar.info(f"Se detectan varios desaladores: {', '.join(desaladores_detectados)}. Mostrando nombres base simples.")
                         opciones_variables_base = variables_base_filtradas
                     else:
-                        st.sidebar.info("Se detecta 1 desalador (o ninguno); se mostrarán nombres completos.")
+                        st.sidebar.info("Se detecta 1 desalador (o ninguno); se mostrarÃ¡n nombres completos.")
                         # en caso de 1 desalador mostramos todos los nombres tal cual (como en tu programa original)
                         opciones_variables_base = nombres_col if nombres_col else variables_base_filtradas
 
@@ -924,13 +924,13 @@ else:
                     else:
                         var_sel = st.selectbox("Selecciona variable base", options=opciones_variables_base)
 
-                        # Multiselección de desaladores (si hay varios)
+                        # MultiselecciÃ³n de desaladores (si hay varios)
                         if len(desaladores_detectados) > 1:
                             desal_sel = st.multiselect("Selecciona desaladores (filtrar)", options=desaladores_detectados, default=desaladores_detectados)
                         else:
                             desal_sel = st.multiselect("Selecciona desaladores (opcional)", options=desaladores_detectados, default=desaladores_detectados)
 
-                        # Si el usuario escoge el nombre básico (cuando hay varios desaladores), tenemos que mapearlo a las columnas completas
+                        # Si el usuario escoge el nombre bÃ¡sico (cuando hay varios desaladores), tenemos que mapearlo a las columnas completas
                         # Construir cols_relacionadas a partir de mapa_variable_a_columnas
                         cols_relacionadas = []
                         if mapa_variable_a_columnas and var_sel in mapa_variable_a_columnas:
@@ -957,13 +957,13 @@ else:
                         colA, colB = st.columns(2)
 
                         with colA:
-                            valor_critico = st.number_input('Valor crítico (para análisis)', value=0.0, format="%.6f")
-                            if st.button('Ejecutar análisis crítico'):
+                            valor_critico = st.number_input('Valor crÃ­tico (para anÃ¡lisis)', value=0.0, format="%.6f")
+                            if st.button('Ejecutar anÃ¡lisis crÃ­tico'):
                                 out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Analisis_Criticos'
                                 out_dir.mkdir(parents=True, exist_ok=True)
                                 try:
                                     archivos = analisis_critico_extendido(datos, desal_sel or list(desaladores_detectados or []), var_sel, float(valor_critico), str(out_dir), mapa_norm_columns)
-                                    st.success(f'Análisis crítico generado. Archivos: {len(archivos)}')
+                                    st.success(f'AnÃ¡lisis crÃ­tico generado. Archivos: {len(archivos)}')
                                     for k,v in archivos.items():
                                         try:
                                             with open(v, "rb") as f:
@@ -971,15 +971,15 @@ else:
                                         except Exception as e:
                                             st.write(f"No se pudo preparar descarga para {v}: {e}")
                                 except Exception as e:
-                                    st.error(f'Error generando análisis crítico: {e}')
+                                    st.error(f'Error generando anÃ¡lisis crÃ­tico: {e}')
 
                         with colB:
-                            if st.button('Generar gráficas por desalador'):
+                            if st.button('Generar grÃ¡ficas por desalador'):
                                 out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Graficas'
                                 out_dir.mkdir(parents=True, exist_ok=True)
                                 try:
                                     archivos_g = generar_graficas_por_desalador(datos, desal_sel or list(desaladores_detectados or []), var_sel, str(out_dir), mapa_norm_columns)
-                                    st.success(f'Gráficas generadas. Archivos: {len(archivos_g)}')
+                                    st.success(f'GrÃ¡ficas generadas. Archivos: {len(archivos_g)}')
                                     for k,v in archivos_g.items():
                                         try:
                                             with open(v, "rb") as f:
@@ -987,14 +987,14 @@ else:
                                         except Exception as e:
                                             st.write(f"No se pudo preparar descarga para {v}: {e}")
                                 except Exception as e:
-                                    st.error(f'Error generando gráficas: {e}')
+                                    st.error(f'Error generando grÃ¡ficas: {e}')
 
                         st.markdown("---")
                         st.subheader('Visualizaciones interactivas')
                         try:
                             cols_plot = [c for c in datos.columns if c != 'Tiempo']
                             if not cols_plot:
-                                st.info("No hay columnas numéricas para graficar.")
+                                st.info("No hay columnas numÃ©ricas para graficar.")
                             else:
                                 ycol = st.selectbox('Variable a graficar', options=cols_plot, index=0)
                                 xmode = st.radio('Eje X', ['Tiempo','Variable base'], index=0)
@@ -1017,7 +1017,7 @@ else:
                                 ax.grid(True)
                                 st.pyplot(fig)
                         except Exception as e:
-                            st.error(f'Error dibujando visualización: {e}')
+                            st.error(f'Error dibujando visualizaciÃ³n: {e}')
 
                         st.markdown("---")
                         st.subheader("Exportar datos procesados")
@@ -1029,18 +1029,18 @@ else:
                                 st.download_button("Descargar datos procesados (Excel)", data=f, file_name="datos_procesados_desalacion.xlsx",
                                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                         except Exception as e:
-                            st.error(f"No se pudo preparar exportación: {e}")
+                            st.error(f"No se pudo preparar exportaciÃ³n: {e}")
 
             else:
-                st.info("El archivo no contiene hojas válidas o no se pudo leer.")
+                st.info("El archivo no contiene hojas vÃ¡lidas o no se pudo leer.")
 
     st.markdown("---")
-    st.caption("Aplicación creada integrando la lógica del programa original.")
+    st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original.")
 
         # FIN DEL ARCHIVO
     with tab2:
-        st.header("Análisis Avanzado de Variables — Versión Extendida")
-        st.write("Esta pestaña ejecuta un análisis estadístico y de ML muy completo. "
+        st.header("AnÃ¡lisis Avanzado de Variables â€” VersiÃ³n Extendida")
+        st.write("Esta pestaÃ±a ejecuta un anÃ¡lisis estadÃ­stico y de ML muy completo. "
                  "Modelos (opcional): CatBoost, GaussianProcess, SHAP explainability, stacking ensembles, hyperparam search y logging detallado.")
 
         # Try to reuse 'datos' from the main app; fallback to df_raw
@@ -1059,17 +1059,17 @@ else:
                     except Exception:
                         pass
             except Exception:
-                st.error("No hay datos disponibles en el espacio de nombres. Suba un Excel en la pestaña 'Graficado de variables' primero.")
+                st.error("No hay datos disponibles en el espacio de nombres. Suba un Excel en la pestaÃ±a 'Graficado de variables' primero.")
                 df = None
 
         if df is None:
             st.stop()
 
-        # === IMPORTS LOCALES (opcionales según disponibilidad) ===
+        # === IMPORTS LOCALES (opcionales segÃºn disponibilidad) ===
         import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger("AnalisisAvanzado")
-        logger.info("Iniciando Análisis Avanzado")
+        logger.info("Iniciando AnÃ¡lisis Avanzado")
 
         import numpy as np
         import pandas as pd
@@ -1131,13 +1131,13 @@ else:
             return {"MAE": mae, "RMSE": rmse, "MAPE": mape, "R2": r2}
 
         st.markdown("---")
-        st.subheader("1) Preparación, detección y limpieza automática")
-        st.write("A continuación se detectan columnas, se permite seleccionar target/features, y se aplican imputaciones y escalado.")
+        st.subheader("1) PreparaciÃ³n, detecciÃ³n y limpieza automÃ¡tica")
+        st.write("A continuaciÃ³n se detectan columnas, se permite seleccionar target/features, y se aplican imputaciones y escalado.")
 
         # Show a compact summary
         st.write("Dimensiones: ", df.shape)
         num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        st.write("Columnas numéricas detectadas (ejemplo):", num_cols[:20])
+        st.write("Columnas numÃ©ricas detectadas (ejemplo):", num_cols[:20])
 
         # Detect time column
         tiempo_col = "Tiempo" if "Tiempo" in df.columns else None
@@ -1147,13 +1147,13 @@ else:
         # Variable selection UI
         all_cols = list(df.columns)
         target = st.selectbox("Selecciona variable objetivo (target)", [c for c in all_cols if c != tiempo_col])
-        features = st.multiselect("Selecciona features (vacío = todas excepto target)", [c for c in all_cols if c != target], default=[c for c in all_cols if c not in (target, tiempo_col)])
+        features = st.multiselect("Selecciona features (vacÃ­o = todas excepto target)", [c for c in all_cols if c != target], default=[c for c in all_cols if c not in (target, tiempo_col)])
         if len(features) == 0:
             features = [c for c in all_cols if c not in (target, tiempo_col)]
 
         # Model parameters UI
-        st.markdown("**Configuración de validación y modelos**")
-        test_size = st.slider("Tamaño test", 0.05, 0.5, 0.2)
+        st.markdown("**ConfiguraciÃ³n de validaciÃ³n y modelos**")
+        test_size = st.slider("TamaÃ±o test", 0.05, 0.5, 0.2)
         use_timesplit = st.checkbox("Usar TimeSeriesSplit (si Tiempo existe)", value=False)
         n_splits = st.slider("n_splits CV", 3, 10, 5)
         random_state = st.number_input("Random seed", value=42, step=1)
@@ -1170,10 +1170,10 @@ else:
         selected_models = st.multiselect("Selecciona modelos", options=model_choices, default=['LinearRegression','RandomForest','GradientBoosting'])
 
         # Feature engineering options
-        st.markdown("**Ingeniería de variables**")
+        st.markdown("**IngenierÃ­a de variables**")
         apply_log = st.checkbox("Aplicar log(1+x) a variables altamente sesgadas", value=False)
-        apply_pca = st.checkbox("Aplicar PCA (para reducción dimensional si se desea)", value=False)
-        pca_n = st.slider("Número de componentes PCA", 1, min(20, max(1, len(features))), value=min(5, len(features)))
+        apply_pca = st.checkbox("Aplicar PCA (para reducciÃ³n dimensional si se desea)", value=False)
+        pca_n = st.slider("NÃºmero de componentes PCA", 1, min(20, max(1, len(features))), value=min(5, len(features)))
 
         # Data preparation
         data_local = df[[target] + features].copy()
@@ -1192,14 +1192,14 @@ else:
                     X[c] = X[c].astype(str).fillna("nan")
 
         
-        # Imputaci�n segura
+        # Imputación segura
         X_imputed = imputer.fit_transform(X)
         
-        # Si el n�mero de columnas coincide, usamos los nombres originales
+        # Si el número de columnas coincide, usamos los nombres originales
         if X_imputed.shape[1] == len(X.columns):
             X = pd.DataFrame(X_imputed, columns=X.columns)
         else:
-            # Si no coincide, generamos nombres gen�ricos para evitar errores
+            # Si no coincide, generamos nombres genéricos para evitar errores
             X = pd.DataFrame(X_imputed, columns=[f"feature_{i}" for i in range(X_imputed.shape[1])])
         
         if apply_log:
@@ -1297,7 +1297,7 @@ else:
                     X_train_sel = X_train_df
                     X_test_sel = X_test_df
             except Exception as e:
-                logger.info(f"SelectFromModel falló: {e}")
+                logger.info(f"SelectFromModel fallÃ³: {e}")
                 X_train_sel = X_train_df
                 X_test_sel = X_test_df
         else:
@@ -1318,12 +1318,12 @@ else:
                     X_test_sel = pd.DataFrame(X_test_s, columns=features)[feats_rfe]
                     st.write(f"Features tras RFE: {len(feats_rfe)}")
             except Exception as e:
-                logger.info(f"RFE falló: {e}")
+                logger.info(f"RFE fallÃ³: {e}")
 
         st.write("Features finales usadas para modelado:", list(X_train_sel.columns[:200]))
 
         # Train and evaluate models
-        st.subheader("Entrenamiento y evaluación de modelos (avanzado)")
+        st.subheader("Entrenamiento y evaluaciÃ³n de modelos (avanzado)")
         results = {}
         cv = TimeSeriesSplit(n_splits=n_splits) if use_timesplit and tiempo_col else KFold(n_splits=n_splits, shuffle=True, random_state=int(random_state))
         progress = st.progress(0)
@@ -1443,10 +1443,10 @@ else:
                 resid = y_test - y_pred_b
                 fig2, ax2 = plt.subplots(figsize=(8,4))
                 ax2.hist(resid.dropna(), bins=40)
-                ax2.set_title('Distribución residuos (test)')
+                ax2.set_title('DistribuciÃ³n residuos (test)')
                 st.pyplot(fig2)
             except Exception as e:
-                st.write(f"Error generando gráficos diagnóstico: {e}")
+                st.write(f"Error generando grÃ¡ficos diagnÃ³stico: {e}")
 
             # SHAP explainability if available
             if HAS_SHAP:
@@ -1463,29 +1463,29 @@ else:
                         st.pyplot(fig_shap)
                     except Exception:
                         # fallback: KernelExplainer for complex objects (slow)
-                        st.write("SHAP: no se pudo usar Explainer directo; intentando KernelExplainer (más lento).")
+                        st.write("SHAP: no se pudo usar Explainer directo; intentando KernelExplainer (mÃ¡s lento).")
                         try:
                             expl = shap.KernelExplainer(model_obj.predict, X_train_sel.fillna(0).iloc[:100,:])
                             shap_vals = expl.shap_values(X_test_sel.fillna(0).iloc[:50,:])
                             shap.summary_plot(shap_vals, X_test_sel.fillna(0).iloc[:50,:], show=False)
                             st.pyplot(plt.gcf())
                         except Exception as e_sh:
-                            st.write(f"SHAP falló: {e_sh}")
+                            st.write(f"SHAP fallÃ³: {e_sh}")
                 except Exception as e:
                     st.write(f"Error calculando SHAP: {e}")
             else:
-                st.info("SHAP no está instalado. Para explicabilidad avanzada instala 'shap'.")
+                st.info("SHAP no estÃ¡ instalado. Para explicabilidad avanzada instala 'shap'.")
 
         # Correlation heatmap
-        st.subheader("Matriz de correlación (Pearson / Spearman)")
-        corr_method = st.radio("Método correlación", ['pearson','spearman'], index=0)
+        st.subheader("Matriz de correlaciÃ³n (Pearson / Spearman)")
+        corr_method = st.radio("MÃ©todo correlaciÃ³n", ['pearson','spearman'], index=0)
         try:
             corr = pd.concat([y, X], axis=1).corr(method=corr_method)
             figc, axc = plt.subplots(figsize=(12,10))
             sns.heatmap(corr, cmap='RdBu_r', center=0, ax=axc)
             st.pyplot(figc)
         except Exception as e:
-            st.write(f"Error calculando matriz de correlación: {e}")
+            st.write(f"Error calculando matriz de correlaciÃ³n: {e}")
 
         # Export all results
         st.subheader("Exportar resultados")
@@ -1507,4 +1507,4 @@ else:
                 st.write(f"Error exportando Excel: {e}")
 
         st.markdown("---")
-        st.write("Análisis extendido completado. Repite con otros parámetros si deseas.")
+        st.write("AnÃ¡lisis extendido completado. Repite con otros parÃ¡metros si deseas.")
