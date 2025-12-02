@@ -1191,11 +1191,17 @@ else:
                 except Exception:
                     X[c] = X[c].astype(str).fillna("nan")
 
-                
-        if X_imputed.shape[1] != len(features):
-            features = [f"feature_{i}" for i in range(X_imputed.shape[1])]
-        X = pd.DataFrame(X_imputed, columns=features)
-
+        
+        # Imputación segura
+        X_imputed = imputer.fit_transform(X)
+        
+        # Si el número de columnas coincide, usamos los nombres originales
+        if X_imputed.shape[1] == len(X.columns):
+            X = pd.DataFrame(X_imputed, columns=X.columns)
+        else:
+            # Si no coincide, generamos nombres genéricos para evitar errores
+            X = pd.DataFrame(X_imputed, columns=[f"feature_{i}" for i in range(X_imputed.shape[1])])
+        
         if apply_log:
             # apply log1p only to positive numeric columns with skew
             for c in X.columns:
