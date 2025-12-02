@@ -1034,8 +1034,8 @@ else:
             else:
                 st.info("El archivo no contiene hojas válidas o no se pudo leer.")
 
-        st.markdown("---")
-        st.caption("Aplicación creada integrando la lógica del programa original.")
+    st.markdown("---")
+    st.caption("Aplicación creada integrando la lógica del programa original.")
 
         # FIN DEL ARCHIVO
     with tab2:
