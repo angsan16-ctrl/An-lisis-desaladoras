@@ -71,7 +71,7 @@ with tab_graf:
     st.set_page_config(page_title="Análisis desaladoras", layout="wide")
 
     # TÃ­tulo principal en azul oscuro
-    st.markdown("<h1 class='darkblue-title'>AnÃ¡lisis desaladoras</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allow_html=True)
 
     # Estilo global: colores, headers, botones
     st.markdown("""
@@ -168,12 +168,12 @@ with tab_graf:
             spec.loader.exec_module(user_mod)
             st.sidebar.success(f"Módulo original cargado desde {MODULE_PATH}")
         except Exception as e:
-            st.sidebar.error(f"No se pudo cargar mÃ³dulo original: {e}")
+            st.sidebar.error(f"No se pudo cargar módulo original: {e}")
     else:
-        st.sidebar.info("No se encontrÃ³ el módulo original en /mnt/data; utilizando implementaciones internas.")
+        st.sidebar.info("No se encontró el módulo original en /mnt/data; utilizando implementaciones internas.")
 
     def safe_get(name, fallback=None):
-        """Si se cargÃ³ el mÃ³dulo original, devuelve la función exportada; si no, devuelve fallback."""
+        """Si se carga el módulo original, devuelve la función exportada; si no, devuelve fallback."""
         if user_mod is None:
             return fallback
         return getattr(user_mod, name, fallback)
@@ -197,7 +197,7 @@ with tab_graf:
         return s.lower()
 
     def make_unique(col_list: List[str]) -> List[str]:
-        """Convierte nombres a Ãºnicos aÃ±adiendo sufijos __N cuando sea necesario"""
+        """Convierte nombres a Ãºnicos añadiendo sufijos __N cuando sea necesario"""
         seen = {}
         out = []
         for c in col_list:
@@ -228,7 +228,7 @@ with tab_graf:
 
     def detectar_fila_inicio_datos_fallback(df_raw: pd.DataFrame) -> int:
         """
-        HeurÃ­stica para detectar la fila donde comienzan los datos.
+        Heurí­stica para detectar la fila donde comienzan los datos.
         Copiado de tu programa original.
         """
         palabras_ruido = [
@@ -659,7 +659,7 @@ with tab_graf:
                 continue
             col_base = mapping_base.get(d)
             if col_base is None:
-                print(f"No se encontrÃ³ columna base '{variable_base}' para desalador {d}.")
+                print(f"No se encontró columna base '{variable_base}' para desalador {d}.")
                 continue
             df_sub = datos[['Tiempo'] + cols].copy()
             for c in cols:
@@ -738,13 +738,13 @@ with tab_graf:
     # UI: Sidebar
     # -------------------------
     st.sidebar.header("Entradas")
-    uploaded = st.sidebar.file_uploader("Sube archivo Excel de desalaciÃ³n", type=["xlsx", "xls"], help="Archivo con la estructura del programa original (se leen todas las filas)")
+    uploaded = st.sidebar.file_uploader("Sube archivo Excel de desalación", type=["xlsx", "xls"], help="Archivo con la estructura del programa original (se leen todas las filas)")
     st.sidebar.markdown("---")
     st.sidebar.header("Parámetros visuales")
     fig_w = st.sidebar.slider("Ancho figura", 6, 18, 10)
     fig_h = st.sidebar.slider("Alto figura", 4, 12, 6)
     st.sidebar.markdown("---")
-    st.sidebar.caption("Si colocas el mÃ³dulo 'Programa Eficiencias de desalacion2.py' en /mnt/data/ la app intentarÃ¡ reutilizar sus funciones.")
+    st.sidebar.caption("Si colocas el módulo 'Programa Eficiencias de desalacion2.py' en /mnt/data/ la app intentará reutilizar sus funciones.")
 
     # Mostrar logo opcional si estÃ¡
     logo_path = Path("logo_repsol.png")
@@ -770,7 +770,7 @@ with tab_graf:
     # Main: cuando hay upload
     # -------------------------
     if uploaded is None:
-        st.info("Sube un archivo Excel para comenzar. La app leerÃ¡ todas las filas y reconstruirÃ¡ nombres y variables.")
+        st.info("Sube un archivo Excel para comenzar. La app leerá todas las filas y reconstruirá nombres y variables.")
     else:
         # Guardar temporalmente
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmpf:
@@ -788,7 +788,7 @@ with tab_graf:
             hoja_sel = st.selectbox("Selecciona hoja", hojas)
             try:
                 df_raw = pd.read_excel(tmp_path, sheet_name=hoja_sel, header=None, engine="openpyxl")
-                st.success(f"Hoja '{hoja_sel}' leÃ­da: filas={df_raw.shape[0]} columnas={df_raw.shape[1]}")
+                st.success(f"Hoja '{hoja_sel}' leí­da: filas={df_raw.shape[0]} columnas={df_raw.shape[1]}")
             except Exception as e:
                 st.error(f"Error leyendo hoja seleccionada: {e}")
                 df_raw = None
@@ -941,7 +941,7 @@ with tab_graf:
                     st.sidebar.info(f"Se detectan varios desaladores: {', '.join(desaladores_detectados)}. Mostrando nombres base simples.")
                     opciones_variables_base = variables_base_filtradas
                 else:
-                    st.sidebar.info("Se detecta 1 desalador (o ninguno); se mostrarÃ¡n nombres completos.")
+                    st.sidebar.info("Se detecta 1 desalador (o ninguno); se mostraran nombres completos.")
                     # en caso de 1 desalador mostramos todos los nombres tal cual (como en tu programa original)
                     opciones_variables_base = nombres_col if nombres_col else variables_base_filtradas
 
@@ -986,13 +986,13 @@ with tab_graf:
                     colA, colB = st.columns(2)
 
                     with colA:
-                        valor_critico = st.number_input('Valor crÃ­tico (para anÃ¡lisis)', value=0.0, format="%.6f")
-                        if st.button('Ejecutar anÃ¡lisis crÃ­tico'):
+                        valor_critico = st.number_input('Valor crÃ­tico (para análisis)', value=0.0, format="%.6f")
+                        if st.button('Ejecutar análisis crítico'):
                             out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Analisis_Criticos'
                             out_dir.mkdir(parents=True, exist_ok=True)
                             try:
                                 archivos = analisis_critico_extendido(datos, desal_sel or list(desaladores_detectados or []), var_sel, float(valor_critico), str(out_dir), mapa_norm_columns)
-                                st.success(f'AnÃ¡lisis crÃ­tico generado. Archivos: {len(archivos)}')
+                                st.success(f'Análisis crí­tico generado. Archivos: {len(archivos)}')
                                 for k,v in archivos.items():
                                     try:
                                         with open(v, "rb") as f:
@@ -1000,15 +1000,15 @@ with tab_graf:
                                     except Exception as e:
                                         st.write(f"No se pudo preparar descarga para {v}: {e}")
                             except Exception as e:
-                                st.error(f'Error generando anÃ¡lisis crÃ­tico: {e}')
+                                st.error(f'Error generando análisis crí­tico: {e}')
 
                     with colB:
-                        if st.button('Generar grÃ¡ficas por desalador'):
+                        if st.button('Generar gráficas por desalador'):
                             out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Graficas'
                             out_dir.mkdir(parents=True, exist_ok=True)
                             try:
                                 archivos_g = generar_graficas_por_desalador(datos, desal_sel or list(desaladores_detectados or []), var_sel, str(out_dir), mapa_norm_columns)
-                                st.success(f'GrÃ¡ficas generadas. Archivos: {len(archivos_g)}')
+                                st.success(f'Gráficas generadas. Archivos: {len(archivos_g)}')
                                 for k,v in archivos_g.items():
                                     try:
                                         with open(v, "rb") as f:
@@ -1016,7 +1016,7 @@ with tab_graf:
                                     except Exception as e:
                                         st.write(f"No se pudo preparar descarga para {v}: {e}")
                             except Exception as e:
-                                st.error(f'Error generando grÃ¡ficas: {e}')
+                                st.error(f'Error generando gráficas: {e}')
 
                     st.markdown("---")
                     st.subheader('Visualizaciones interactivas')
@@ -1061,7 +1061,7 @@ with tab_graf:
                         st.error(f"No se pudo preparar exportaciÃ³n: {e}")
 
         else:
-            st.info("El archivo no contiene hojas vÃ¡lidas o no se pudo leer.")
+            st.info("El archivo no contiene hojas válidas o no se pudo leer.")
 
     st.markdown("---")
     st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original.")
