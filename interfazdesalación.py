@@ -1037,184 +1037,75 @@ st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original."
 # FIN DEL ARCHIVO
 
 
-# =============================
-# NUEVA SECCIÃN: PestaÃ±as y AnÃ¡lisis Avanzado con validaciÃ³n robusta
-# =============================
-import streamlit as st
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+# ==========================
+# Nueva funciÃ³n: anÃ¡lisis Random Forest optimizado
+# ==========================
+from sklearn.ensemble import RandomForestRegressor
+import plotly.express as px
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.svm import SVR, SVC, LinearSVR, LinearSVC
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.neural_network import MLPRegressor, MLPClassifier
-from sklearn.inspection import permutation_importance
-from sklearn.feature_selection import mutual_info_classif
-from sklearn.mixture import GaussianMixture
+import streamlit as st
 
-# Intentar importar SHAP y LIME
-try:
-    import shap
-    SHAP_AVAILABLE = True
-except ImportError:
-    SHAP_AVAILABLE = False
+def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estimators: int = 200, max_depth: int = None, max_features: str = 'auto'):
+    st.subheader("AnÃ¡lisis de importancia de variables (Random Forest)")
+    if variable_objetivo not in datos.columns:
+        st.error(f"La variable objetivo '{variable_objetivo}' no estÃ¡ en los datos.")
+        return
 
-try:
-    from lime.lime_tabular import LimeTabularExplainer
-    LIME_AVAILABLE = True
-except ImportError:
-    LIME_AVAILABLE = False
+    # Preparar datos
+    df = datos.copy()
+    if 'Tiempo' in df.columns:
+        df = df.drop(columns=['Tiempo'])
+    # Ignorar filas con NaN (sin imputar)
+    df = df.dropna(axis=0)
 
-if 'datos' in locals():
-    tab_graf, tab_avz = st.tabs(["Graficado y resumen estadÃ­stico", "AnÃ¡lisis Avanzado"])
+    y = df[variable_objetivo]
+    X = df.drop(columns=[variable_objetivo])
 
-    with tab_graf:
-        st.write("Esta pestaÃ±a conserva toda la lÃ³gica original (ya implementada arriba).")
+    # Entrenar modelo
+    modelo = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, max_features=max_features, random_state=42)
+    modelo.fit(X, y)
 
-    with tab_avz:
-        st.subheader("AnÃ¡lisis Avanzado de Importancia de Variables")
-        todas_vars = [c for c in datos.columns if c != "Tiempo"]
-        if todas_vars:
-            var_ref = st.selectbox("Variable de referencia (Y)", todas_vars)
-            problem_type = st.radio("Tipo de problema", ["RegresiÃ³n", "ClasificaciÃ³n"], index=0)
-            vars_X = st.multiselect("Variables explicativas (X)", todas_vars, default=[v for v in todas_vars if v != var_ref])
+    # Importancias
+    importancias = modelo.feature_importances_
+    df_importancias = pd.DataFrame({
+        'Variable': X.columns,
+        'Importancia': importancias
+    }).sort_values(by='Importancia', ascending=False)
 
-            if st.button("Calcular importancias"):
-                if len(vars_X) == 0:
-                    st.error("Debes seleccionar al menos una variable explicativa.")
-                else:
-                    X = datos[vars_X].copy()
-                    y = datos[var_ref].copy()
+    st.write("Tabla de importancias:")
+    st.dataframe(df_importancias)
 
-                    # ValidaciÃ³n y fallback para imputaciÃ³n
-                    try:
-                        imp = SimpleImputer(strategy="median")
-                        X_imputed = imp.fit_transform(X)
-                        if X_imputed.shape[1] != len(vars_X):
-                            raise ValueError("Forma inconsistente tras imputaciÃ³n.")
-                        X = pd.DataFrame(X_imputed, columns=vars_X)
-                    except Exception as e:
-                        st.warning(f"ImputaciÃ³n fallÃ³ ({e}), usando fillna(median) como fallback.")
-                        X = X.fillna(X.median())
+    # Resumen top 5
+    top5 = df_importancias.head(5)
+    resumen = ", ".join([f"{row.Variable} ({row.Importancia:.3f})" for row in top5.itertuples()])
+    st.info(f"Top 5 variables mÃ¡s influyentes: {resumen}")
 
-                    y = pd.to_numeric(y, errors='coerce').fillna(y.mean())
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                    scaler = StandardScaler()
-                    X_train = pd.DataFrame(scaler.fit_transform(X_train), columns=vars_X)
-                    X_test = pd.DataFrame(scaler.transform(X_test), columns=vars_X)
+    # GrÃ¡fico interactivo con Plotly
+    fig = px.bar(df_importancias, x='Importancia', y='Variable', orientation='h', title='Importancia de variables (Random Forest)', height=800)
+    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+    st.plotly_chart(fig, use_container_width=True)
 
-                    importancias = {}
-                    def add_series(name, values):
-                        s = pd.Series(values, index=vars_X)
-                        s = (s - s.min()) / (s.max() - s.min() + 1e-12)
-                        importancias[name] = s
 
-                    # Ãrbol de DecisiÃ³n
-                    mdl = DecisionTreeRegressor(random_state=42) if problem_type == "RegresiÃ³n" else DecisionTreeClassifier(random_state=42)
-                    mdl.fit(X_train, y_train)
-                    add_series("Ãrbol", mdl.feature_importances_)
 
-                    # Random Forest
-                    mdl_rf = RandomForestRegressor(n_estimators=200, random_state=42) if problem_type == "RegresiÃ³n" else RandomForestClassifier(n_estimators=200, random_state=42)
-                    mdl_rf.fit(X_train, y_train)
-                    add_series("RandomForest", mdl_rf.feature_importances_)
+# ==========================
+# AÃ±adir pestaÃ±as Streamlit
+# ==========================
+tab1, tab2 = st.tabs(["Graficado", "AnÃ¡lisis"])
 
-                    # PCA
-                    pca = PCA(n_components=min(len(vars_X), 5))
-                    pca.fit(X_train)
-                    contrib = np.sum(np.abs(pca.components_.T) * pca.explained_variance_ratio_, axis=1)
-                    add_series("PCA", contrib)
+with tab1:
+    st.write("Todas las funciones originales se mantienen aquÃ­.")
+    # AquÃ­ se ejecuta el cÃ³digo original de graficado
 
-                    # KMeans
-                    km = KMeans(n_clusters=min(5, len(X_train)//2), random_state=42, n_init="auto")
-                    labels = km.fit_predict(X_train)
-                    mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                    add_series("KMeans", mi)
-
-                    # DBSCAN
-                    db = DBSCAN(eps=0.5, min_samples=5)
-                    labels = db.fit_predict(X_train)
-                    if len(set(labels)) > 1:
-                        mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                        add_series("DBSCAN", mi)
-
-                    # NN (MLP)
-                    mdl_nn = MLPRegressor(hidden_layer_sizes=(64,32), max_iter=300) if problem_type == "RegresiÃ³n" else MLPClassifier(hidden_layer_sizes=(64,32), max_iter=300)
-                    mdl_nn.fit(X_train, y_train)
-                    pi = permutation_importance(mdl_nn, X_test, y_test, n_repeats=10, random_state=42)
-                    add_series("MLP", np.abs(pi.importances_mean))
-
-                    # Generativo (GMM)
-                    gmm = GaussianMixture(n_components=min(5, len(X_train)//2), random_state=42)
-                    labels = gmm.fit_predict(X_train)
-                    mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                    add_series("GMM", mi)
-
-                    # SHAP
-                    if SHAP_AVAILABLE:
-                        try:
-                            explainer = shap.TreeExplainer(mdl_rf)
-                            shap_values = explainer.shap_values(X_test)
-                            if isinstance(shap_values, list):
-                                vals = np.mean(np.abs(shap_values[0]), axis=0)
-                            else:
-                                vals = np.mean(np.abs(shap_values), axis=0)
-                            add_series("SHAP", vals)
-                        except Exception as e:
-                            st.warning(f"SHAP fallÃ³: {e}")
-
-                    # LIME
-                    if LIME_AVAILABLE:
-                        try:
-                            mode = 'regression' if problem_type == "RegresiÃ³n" else 'classification'
-                            explainer = LimeTabularExplainer(training_data=np.array(X_train), feature_names=vars_X, mode=mode)
-                            idxs = np.random.choice(X_test.index, size=min(10, len(X_test)), replace=False)
-                            agg_weights = pd.Series(0.0, index=vars_X)
-                            for i in idxs:
-                                x_i = X_test.loc[i].values
-                                if mode=='regression':
-                                    exp = explainer.explain_instance(x_i, mdl_rf.predict, num_features=len(vars_X))
-                                else:
-                                    exp = explainer.explain_instance(x_i, mdl_rf.predict_proba, num_features=len(vars_X))
-                                for feat, weight in exp.as_list():
-                                    agg_weights[feat] += abs(weight)
-                            add_series("LIME", agg_weights.values)
-                        except Exception as e:
-                            st.warning(f"LIME fallÃ³: {e}")
-
-                    # Mostrar resultados
-                    df_imp = pd.DataFrame(importancias)
-                    st.subheader("Tabla de importancias (normalizadas)")
-                    st.dataframe(df_imp)
-
-                    # GrÃ¡fico de barras
-                    fig_bar, ax_bar = plt.subplots(figsize=(10,6))
-                    df_imp.plot(kind='bar', ax=ax_bar)
-                    plt.title("Importancia normalizada por mÃ©todo")
-                    st.pyplot(fig_bar)
-
-                    # Heatmap
-                    fig_heat, ax_heat = plt.subplots(figsize=(10,6))
-                    sns.heatmap(df_imp.T, annot=True, cmap="viridis")
-                    plt.title("Heatmap de importancias")
-                    st.pyplot(fig_heat)
-
-                    # Descargas
-                    buf_excel = io.BytesIO()
-                    with pd.ExcelWriter(buf_excel, engine="openpyxl") as writer:
-                        df_imp.to_excel(writer, index=True)
-                    st.download_button("Descargar tabla (Excel)", buf_excel.getvalue(), file_name="importancias_avanzadas.xlsx")
-
-                    buf_bar = io.BytesIO()
-                    fig_bar.savefig(buf_bar, format="png")
-                    st.download_button("Descargar grÃ¡fico de barras (PNG)", buf_bar.getvalue(), file_name="grafico_barras.png")
-
-                    buf_heat = io.BytesIO()
-                    fig_heat.savefig(buf_heat, format="png")
-                    st.download_button("Descargar heatmap (PNG)", buf_heat.getvalue(), file_name="heatmap_importancias.png")
+with tab2:
+    st.write("Nueva funcionalidad: anÃ¡lisis Random Forest optimizado")
+    if 'datos' in locals():
+        variable_objetivo = st.selectbox("Selecciona variable objetivo", options=[c for c in datos.columns if c != 'Tiempo'])
+        n_estimators = st.slider("NÃºmero de Ã¡rboles (n_estimators)", 50, 500, 200, step=50)
+        max_depth = st.slider("Profundidad mÃ¡xima (max_depth)", 1, 50, 10)
+        max_features = st.selectbox("MÃ¡x. caracterÃ­sticas (max_features)", options=['auto', 'sqrt', 'log2'])
+        if st.button("Ejecutar anÃ¡lisis Random Forest"):
+            analisis_random_forest(datos, variable_objetivo, n_estimators=n_estimators, max_depth=max_depth, max_features=max_features)
+    else:
+        st.warning("Primero carga y procesa los datos en la pestaÃ±a Graficado.")
