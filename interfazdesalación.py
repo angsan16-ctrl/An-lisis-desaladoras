@@ -66,10 +66,7 @@ with tab_graf:
     # -------------------------
     # ConfiguraciÃ³n bÃ¡sica y estilo
     # -------------------------
-    st.set_page_config(page_title="Análisis desaladoras", layout="wide")
 
-    # TÃ­tulo principal en azul oscuro
-    st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allow_html=True)
 
     # Estilo global: colores, headers, botones
     st.markdown("""
