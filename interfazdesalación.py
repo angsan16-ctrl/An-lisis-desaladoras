@@ -1047,7 +1047,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estimators: int = 200, max_depth: int = None, max_features: str = 'auto'):
+def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estimators: int = 200, max_depth: int = None, max_features: str = 'sqrt'):
     st.subheader("AnÃ¡lisis de importancia de variables (Random Forest)")
     if variable_objetivo not in datos.columns:
         st.error(f"La variable objetivo '{variable_objetivo}' no estÃ¡ en los datos.")
@@ -1104,7 +1104,7 @@ with tab2:
         variable_objetivo = st.selectbox("Selecciona variable objetivo", options=[c for c in datos.columns if c != 'Tiempo'])
         n_estimators = st.slider("NÃºmero de Ã¡rboles (n_estimators)", 50, 500, 200, step=50)
         max_depth = st.slider("Profundidad mÃ¡xima (max_depth)", 1, 50, 10)
-        max_features = st.selectbox("MÃ¡x. caracterÃ­sticas (max_features)", options=['auto', 'sqrt', 'log2'])
+        max_features = st.selectbox("MÃ¡x. caracterÃ­sticas (max_features)", options=['sqrt', 'log2'])
         if st.button("Ejecutar anÃ¡lisis Random Forest"):
             analisis_random_forest(datos, variable_objetivo, n_estimators=n_estimators, max_depth=max_depth, max_features=max_features)
     else:
