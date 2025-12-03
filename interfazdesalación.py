@@ -68,7 +68,7 @@ with tab_graf:
     # -------------------------
     # ConfiguraciÃ³n bÃ¡sica y estilo
     # -------------------------
-    st.set_page_config(page_title="AnÃ¡lisis desaladoras", layout="wide")
+    st.set_page_config(page_title="Análisis desaladoras", layout="wide")
 
     # TÃ­tulo principal en azul oscuro
     st.markdown("<h1 class='darkblue-title'>AnÃ¡lisis desaladoras</h1>", unsafe_allow_html=True)
@@ -166,14 +166,14 @@ with tab_graf:
             user_mod = importlib.util.module_from_spec(spec)
             sys.modules["prog_desal"] = user_mod
             spec.loader.exec_module(user_mod)
-            st.sidebar.success(f"MÃ³dulo original cargado desde {MODULE_PATH}")
+            st.sidebar.success(f"Módulo original cargado desde {MODULE_PATH}")
         except Exception as e:
             st.sidebar.error(f"No se pudo cargar mÃ³dulo original: {e}")
     else:
-        st.sidebar.info("No se encontrÃ³ el mÃ³dulo original en /mnt/data; utilizando implementaciones internas.")
+        st.sidebar.info("No se encontrÃ³ el módulo original en /mnt/data; utilizando implementaciones internas.")
 
     def safe_get(name, fallback=None):
-        """Si se cargÃ³ el mÃ³dulo original, devuelve la funciÃ³n exportada; si no, devuelve fallback."""
+        """Si se cargÃ³ el mÃ³dulo original, devuelve la función exportada; si no, devuelve fallback."""
         if user_mod is None:
             return fallback
         return getattr(user_mod, name, fallback)
@@ -560,7 +560,7 @@ with tab_graf:
     def analisis_critico_extendido_internal(datos: pd.DataFrame, desaladores: List[str], variable_base: str,
                                             valor_critico: float, carpeta_salida: str, mapa_norm_columns: Dict[str, List[Tuple[str,str]]]):
         if 'Tiempo' not in datos.columns:
-            raise ValueError("No se encontrÃ³ la columna 'Tiempo' en los datos.")
+            raise ValueError("No se encontró la columna 'Tiempo' en los datos.")
 
         grupos, comunes = separar_variables_por_desalador(list(datos.columns.drop('Tiempo')), desaladores)
         resultados = {}
@@ -668,7 +668,7 @@ with tab_graf:
             wb = Workbook()
             ws0 = wb.active
             ws0.title = "Resumen"
-            ws0["A1"] = f"GrÃ¡ficas desalador {d} (base: {col_base})"
+            ws0["A1"] = f"Gráficas desalador {d} (base: {col_base})"
             for c in cols:
                 if c == col_base:
                     continue
@@ -740,7 +740,7 @@ with tab_graf:
     st.sidebar.header("Entradas")
     uploaded = st.sidebar.file_uploader("Sube archivo Excel de desalaciÃ³n", type=["xlsx", "xls"], help="Archivo con la estructura del programa original (se leen todas las filas)")
     st.sidebar.markdown("---")
-    st.sidebar.header("ParÃ¡metros visuales")
+    st.sidebar.header("Parámetros visuales")
     fig_w = st.sidebar.slider("Ancho figura", 6, 18, 10)
     fig_h = st.sidebar.slider("Alto figura", 4, 12, 6)
     st.sidebar.markdown("---")
@@ -879,8 +879,8 @@ with tab_graf:
                 
                 st.sidebar.markdown("---")
                 forzar_general = st.sidebar.radio(
-                    "Â¿Quieres que la app busque varios desaladores?",
-                    ["No, usar un solo desalador (GENERAL)", "SÃ­, detectar varios desaladores automÃ¡ticamente"],
+                    "¿Quieres que la app busque varios desaladores?",
+                    ["No, usar un solo desalador (GENERAL)", "Detectar varios desaladores automáticamente"],
                     index=0
                 )
 
