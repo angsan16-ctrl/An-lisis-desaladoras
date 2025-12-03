@@ -652,8 +652,8 @@ def generar_graficas_por_desalador_internal(datos: pd.DataFrame, desaladores: Li
                 continue
             plt.figure(figsize=(6,4))
             plt.scatter(base_m, serie_m, s=20, alpha=0.7)
-            plt.xlabel(col_base)
-            plt.ylabel(c)
+            plt.xlabel(str(col_base))
+            plt.ylabel(str(c))
             plt.title(f"{c} vs {col_base}")
             plt.grid(True)
             buf1 = io.BytesIO()
@@ -663,7 +663,7 @@ def generar_graficas_por_desalador_internal(datos: pd.DataFrame, desaladores: Li
             plt.figure(figsize=(6,4))
             plt.scatter(tiempo_m, serie_m, s=20, alpha=0.7)
             plt.xlabel("Tiempo")
-            plt.ylabel(c)
+            plt.ylabel(str(c))
             plt.xticks(rotation=25)
             plt.title(f"{c} vs Tiempo")
             plt.grid(True)
@@ -825,8 +825,8 @@ else:
                         datos.loc[datos[col_eff] <= 0, col_eff] = np.nan
                         st.info(f"Filtro aplicado: valores <= 0 eliminados en '{col_eff}'")
 
-                    # asegurar unicidad columnas
-                    datos.columns = make_unique(nombres_col[:datos.shape[1]])
+                    # asegurar unicidad columnas (forzar strings para que aparezcan como etiquetas)
+                    datos.columns = [str(c) for c in make_unique(nombres_col[:datos.shape[1]])]
                     # reconstruir columna Tiempo desde la columna 1 (index 1) del raw
                     tiempo_col = pd.to_datetime(df_raw.iloc[fila_inicio:, 1].reset_index(drop=True), errors='coerce')
                     if tiempo_col.isnull().all():
@@ -1009,11 +1009,11 @@ else:
                                         else:
                                             xseries = datos[cols_relacionadas].mean(axis=1, skipna=True)
                                         ax.scatter(xseries, datos[ycol], s=10, alpha=0.7)
-                                        ax.set_xlabel(var_sel)
+                                        ax.set_xlabel(str(var_sel))
                                     except Exception:
                                         ax.scatter(datos.index, datos[ycol], s=10, alpha=0.7)
                                         ax.set_xlabel('Index')
-                                ax.set_ylabel(ycol)
+                                ax.set_ylabel(str(ycol))
                                 ax.grid(True)
                                 st.pyplot(fig)
                         except Exception as e:
@@ -1476,6 +1476,24 @@ else:
             else:
                 st.info("SHAP no estÃ¡ instalado. Para explicabilidad avanzada instala 'shap'.")
 
+
+        # --- Mostrar importancias agregadas y variable más importante (añadido) ---
+        try:
+            df_imp, agg = calcular_importancias_globales(results)
+            if agg is not None and not agg.empty:
+                top_feat = agg.iloc[0]['Feature']
+                st.success(f"Variable más importante (agregada por modelos): {top_feat} (Rank 1).")
+                st.write("Top 5 variables:", agg['Feature'].head(5).tolist())
+                # Mostrar tabla/heatmap interactiva
+                try:
+                    mostrar_importancias_ui(st, results)
+                except Exception as ex_ui:
+                    st.write(f"No se pudo mostrar la UI de importancias: {ex_ui}")
+            else:
+                st.info("No se han podido calcular importancias agregadas (datos insuficientes).")
+        except Exception as e_imp:
+            st.write(f"No se pudieron calcular importancias agregadas: {e_imp}")
+        # ------------------------------------------------------------------------
         # Correlation heatmap
         st.subheader("Matriz de correlaciÃ³n (Pearson / Spearman)")
         corr_method = st.radio("MÃ©todo correlaciÃ³n", ['pearson','spearman'], index=0)
@@ -1508,3 +1526,194 @@ else:
 
         st.markdown("---")
         st.write("AnÃ¡lisis extendido completado. Repite con otros parÃ¡metros si deseas.")
+
+
+
+
+# -------------------------
+# BLOQUE ADICIONAL: Mejoras de importancia, explicación de modelos y visualizaciones claras
+# Añadido por el asistente: tabla/global importancias, heatmap comparativo, y explicación automática.
+# -------------------------
+import json
+from collections import defaultdict
+
+def calcular_importancias_globales(results_dict):
+    """Construye un DataFrame con importancias por modelo y una importancia agregada normalizada."""
+    import pandas as pd
+    rows = []
+    for model_name, info in results_dict.items():
+        imp = info.get('importances_model')
+        if imp is None:
+            continue
+        for feat, val in imp.items():
+            try:
+                valf = float(val) if val is not None else 0.0
+            except:
+                valf = 0.0
+            rows.append({'Modelo': model_name, 'Feature': feat, 'Importancia': valf})
+    if not rows:
+        return None
+    df_imp = pd.DataFrame(rows)
+    # Normalizar importancias por modelo (0-1) y luego agregar
+    df_imp['Imp_abs'] = df_imp['Importancia'].abs()
+    df_imp['Imp_norm_model'] = df_imp.groupby('Modelo')['Imp_abs'].transform(lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else 0.0)
+    # Agregar: promedio y suma normalizada
+    agg = df_imp.groupby('Feature').agg({'Imp_abs':'mean', 'Imp_norm_model':'mean'}).rename(columns={'Imp_abs':'Imp_media_abs','Imp_norm_model':'Imp_media_norm'})
+    agg = agg.sort_values('Imp_media_norm', ascending=False)
+    agg['Rank'] = range(1, len(agg)+1)
+    return df_imp, agg.reset_index()
+
+
+
+# -------------------------
+# UTIL: obtener la variable más importante de los resultados agregados
+# -------------------------
+def obtener_variable_mas_importante(results_dict):
+    """Devuelve (feature, score) la variable con mayor importancia agregada entre modelos.
+    Usa calcular_importancias_globales internamente. Retorna (None, None) si no hay datos."""
+    try:
+        out = calcular_importancias_globales(results_dict)
+        if out is None:
+            return None, None
+        df_imp, agg = out
+        if agg is None or agg.empty:
+            return None, None
+        top = agg.iloc[0]
+        return top['Feature'], float(top['Imp_media_norm'])
+    except Exception:
+        return None, None
+
+
+
+MODEL_DOCS = {
+    'LinearRegression': {
+        'tipo': 'Lineal, explicable',
+        'parametros_clave': ['fit_intercept','normalize'],
+        'cuando_usar': 'Cuando la relación es aproximadamente lineal y se busca interpretabilidad.'
+    },
+    'Ridge': {
+        'tipo': 'Lineal regularizado (L2)',
+        'parametros_clave': ['alpha'],
+        'cuando_usar': 'Cuando hay multicolinealidad o para reducir varianza.'
+    },
+    'Lasso': {
+        'tipo': 'Lineal regularizado (L1)',
+        'parametros_clave': ['alpha'],
+        'cuando_usar': 'Para selección de variables y modelos más esparsos.'
+    },
+    'ElasticNet': {
+        'tipo': 'Lineal (L1+L2)',
+        'parametros_clave': ['alpha','l1_ratio'],
+        'cuando_usar': 'Compromiso entre L1 y L2.'
+    },
+    'DecisionTree': {
+        'tipo': 'Árbol de decisión',
+        'parametros_clave': ['max_depth','min_samples_leaf'],
+        'cuando_usar': 'Relaciones no lineales fáciles de interpretar; cuidado con overfitting.'
+    },
+    'RandomForest': {
+        'tipo': 'Ensemble de árboles (bagging)',
+        'parametros_clave': ['n_estimators','max_depth','min_samples_leaf'],
+        'cuando_usar': 'General-purpose, robusto a ruido; buena primera opción.'
+    },
+    'GradientBoosting': {
+        'tipo': 'Boosting de árboles',
+        'parametros_clave': ['n_estimators','learning_rate','max_depth'],
+        'cuando_usar': 'Produce alta precisión en muchos problemas; sensible a overfitting sin regularización.'
+    },
+    'SVR': {
+        'tipo': 'Máquinas de soporte vectorial (regresión)',
+        'parametros_clave': ['C','kernel','gamma'],
+        'cuando_usar': 'Cuando se necesitan límites flexibles; no escala bien a muchos datos.'
+    },
+    'KNN': {
+        'tipo': 'K Vecinos más cercanos',
+        'parametros_clave': ['n_neighbors','weights'],
+        'cuando_usar': 'Modelos simples no paramétricos; sensible a escala y dimensión.'
+    },
+    'GaussianProcess': {
+        'tipo': 'Proceso gaussiano (kernel)',
+        'parametros_clave': ['kernel','alpha'],
+        'cuando_usar': 'Modelado bayesiano no paramétrico; útil con pocos datos y necesidad de incertidumbre.'
+    },
+    'XGBoost': {
+        'tipo': 'Boosting (XGBoost)',
+        'parametros_clave': ['n_estimators','learning_rate','max_depth'],
+        'cuando_usar': 'Altamente efectivo en tabulares; requiere tuning.'
+    },
+    'LightGBM': {
+        'tipo': 'Boosting (LightGBM)',
+        'parametros_clave': ['n_estimators','learning_rate','num_leaves'],
+        'cuando_usar': 'Rápido y eficiente en grandes datasets.'
+    },
+    'CatBoost': {
+        'tipo': 'Boosting (CatBoost)',
+        'parametros_clave': ['iterations','learning_rate','depth'],
+        'cuando_usar': 'Bueno con variables categóricas y pocos ajustes de preprocesado.'
+    },
+    'Stacking': {
+        'tipo': 'Ensemble (stacking)',
+        'parametros_clave': ['final_estimator'],
+        'cuando_usar': 'Combinar varios modelos para mejorar robustez y rendimiento.'
+    }
+}
+
+def explicar_modelos_seleccionados(selected_model_names):
+    """Devuelve una lista de explicaciones con parámetros modificables para cada modelo seleccionado."""
+    out = []
+    for name in selected_model_names:
+        doc = MODEL_DOCS.get(name, None)
+        if doc is None:
+            out.append({'Modelo': name, 'Tipo': 'Desconocido', 'Parametros_clave': [], 'Cuando': 'No disponible'})
+        else:
+            out.append({'Modelo': name, 'Tipo': doc['tipo'], 'Parametros_clave': doc['parametros_clave'], 'Cuando': doc['cuando_usar']})
+    return out
+
+# UI helper: mostrar importancias agregadas en Streamlit
+def mostrar_importancias_ui(st, results):
+    try:
+        df_imp, agg = calcular_importancias_globales(results)
+    except Exception as e:
+        st.write(f"No fue posible calcular importancias agregadas: {e}")
+        return
+    if agg is None or agg.empty:
+        st.info("No hay importancias disponibles en los modelos para mostrar.")
+        return
+    st.subheader("Importancia agregada de variables (media normalizada por modelo)")
+    st.dataframe(agg.style.format({'Imp_media_abs':'{:.6f}','Imp_media_norm':'{:.6f}'}))
+    # Top 20 bar chart
+    try:
+        top = agg.set_index('Feature').head(20)
+        st.bar_chart(top['Imp_media_norm'])
+    except Exception:
+        pass
+    # Heatmap modelos vs features (subconjunto)
+    try:
+        import pandas as pd, numpy as np, matplotlib.pyplot as plt, seaborn as sns
+        pivot = df_imp.pivot_table(index='Feature', columns='Modelo', values='Imp_norm_model', aggfunc='mean').fillna(0)
+        # limitar filas para visualización
+        pivot_small = pivot.loc[agg['Feature'].head(40)].copy() if len(pivot) > 40 else pivot
+        fig, ax = plt.subplots(figsize=(10, max(4, min(0.3*len(pivot_small), 18))))
+        sns.heatmap(pivot_small, cmap='RdBu_r', center=0, ax=ax)
+        ax.set_title('Heatmap: importancia (normalizada) por modelo vs feature')
+        st.pyplot(fig)
+    except Exception as e:
+        st.write(f"No se pudo dibujar heatmap: {e}")
+
+# Inserción automática en la pestaña de Análisis Avanzado: esta función puede invocarse después de entrenar modelos
+# por el código principal: pasar el diccionario 'results' y la lista 'selected_models' para mostrar todo.
+def integrar_mejoras_en_ui(st, results, selected_models):
+    st.markdown('---')
+    st.subheader('Resumen comparativo de importancias y explicación de modelos')
+    mostrar_importancias_ui(st, results)
+    st.markdown('---')
+    st.subheader('Explicación automática de los modelos seleccionados')
+    docs = explicar_modelos_seleccionados(selected_models)
+    for d in docs:
+        st.markdown(f"**{d['Modelo']}** — {d['Tipo']}") 
+        st.write('Parámetros clave modificables:', ', '.join(d['Parametros_clave']) if d['Parametros_clave'] else 'N/A')
+        st.write('Cuándo usarlo:', d['Cuando'])
+
+# -------------------------
+# FIN BLOQUE ADICIONAL
+# -------------------------
