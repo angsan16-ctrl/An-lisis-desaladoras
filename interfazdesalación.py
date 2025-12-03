@@ -1120,10 +1120,17 @@ with tab_rf:
             st.dataframe(ranking)
 
             # -----------------------------------------------------
+            # Tamaño del gráfico mediante sliders
+            # -----------------------------------------------------
+            st.sidebar.subheader("Tamaño gráfico Random Forest")
+            fig_w_rf = st.sidebar.slider("Ancho gráfico RF", 6, 20, 10)
+            fig_h_rf = st.sidebar.slider("Alto gráfico RF", 4, 15, 10)
+            
+            # -----------------------------------------------------
             # Gráfico
             # -----------------------------------------------------
             st.subheader("Gráfico de Importancias")
-            fig, ax = plt.subplots(figsize=(10, 6))
+            fig, ax = plt.subplots(figsize=(fig_w_rf, fig_h_rf))
             ax.barh(ranking["Variable"], ranking["Importancia"])
             ax.invert_yaxis()
             ax.set_xlabel("Importancia")
