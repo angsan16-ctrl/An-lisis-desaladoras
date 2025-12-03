@@ -27,8 +27,6 @@ tab_graf, tab_rf = st.tabs(["Graficado", "Análisis"])
 # 1) PESTAÑA GRAFICADO (TODO EL CÓDIGO ORIGINAL)
 # =============================================================
 with tab_graf:
-    st.write("Interfaz original completa activa.")
-
     # app_desalacion_unificado_largo.py
     # Interfaz Streamlit unificada y extensa para anÃ¡lisis de desaladoras
     # - Integra la lÃ³gica del 'Programa Eficiencias de desalacion2.py'
@@ -744,8 +742,6 @@ with tab_graf:
     fig_w = st.sidebar.slider("Ancho figura", 6, 18, 10)
     fig_h = st.sidebar.slider("Alto figura", 4, 12, 6)
     st.sidebar.markdown("---")
-    st.sidebar.caption("Si colocas el módulo 'Programa Eficiencias de desalacion2.py' en /mnt/data/ la app intentará reutilizar sus funciones.")
-
     # Mostrar logo opcional si estÃ¡
     logo_path = Path("logo_repsol.png")
     if logo_path.exists():
@@ -1064,7 +1060,6 @@ with tab_graf:
             st.info("El archivo no contiene hojas válidas o no se pudo leer.")
 
     st.markdown("---")
-    st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original.")
 
     # FIN DEL ARCHIVO
 
