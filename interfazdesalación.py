@@ -1291,7 +1291,7 @@ def advanced_analysis_tab(datos: pd.DataFrame, mapa_norm_columns: dict):
             )
 
             # Compute mean absolute shap value per feature
-            mean_abs_shap = np.mean(np.abs(shap_values.values), axis=0).tolist()
+            mean_abs_shap = np.mean(np.abs(shap_values), axis=0).tolist()
             results['SHAP'] = {'shap_values': shap_values.values.tolist(), 'mean_abs_shap': mean_abs_shap}
         except Exception as e:
             st.write('Error SHAP:', e)
