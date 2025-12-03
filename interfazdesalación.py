@@ -1038,7 +1038,7 @@ st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original."
 
 
 # =============================
-# NUEVA SECCIÃN: PestaÃ±as y AnÃ¡lisis Avanzado con SHAP, LIME y Heatmap
+# NUEVA SECCIÃN: PestaÃ±as y AnÃ¡lisis Avanzado con validaciÃ³n robusta
 # =============================
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -1091,8 +1091,18 @@ if 'datos' in locals():
                 else:
                     X = datos[vars_X].copy()
                     y = datos[var_ref].copy()
-                    imp = SimpleImputer(strategy="median")
-                    X = pd.DataFrame(imp.fit_transform(X), columns=vars_X)
+
+                    # ValidaciÃ³n y fallback para imputaciÃ³n
+                    try:
+                        imp = SimpleImputer(strategy="median")
+                        X_imputed = imp.fit_transform(X)
+                        if X_imputed.shape[1] != len(vars_X):
+                            raise ValueError("Forma inconsistente tras imputaciÃ³n.")
+                        X = pd.DataFrame(X_imputed, columns=vars_X)
+                    except Exception as e:
+                        st.warning(f"ImputaciÃ³n fallÃ³ ({e}), usando fillna(median) como fallback.")
+                        X = X.fillna(X.median())
+
                     y = pd.to_numeric(y, errors='coerce').fillna(y.mean())
                     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
                     scaler = StandardScaler()
