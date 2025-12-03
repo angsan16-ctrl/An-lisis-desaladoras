@@ -1150,14 +1150,37 @@ def advanced_analysis_tab(datos: pd.DataFrame, mapa_norm_columns: dict):
     # prepare X, y
     X = datos[predictors].copy()
     imp = SimpleImputer(strategy=impute_strategy)
-    X_imp = pd.DataFrame(imp.fit_transform(X), columns=predictors)
+    # imputación robusta
+    X_array = imp.fit_transform(X)
+    
+    # forzar la misma cantidad de columnas que X original después de imputar
+    n_cols_final = X_array.shape[1]
+    predictors_final = predictors[:n_cols_final]
+    
+    X_imp = pd.DataFrame(X_array, columns=predictors_final)
+    
+    
+    # escalado robusto (igual controlado)
+    if scaling == 'StandardScaler':
+        scaler = StandardScaler()
+        X_array2 = scaler.fit_transform(X_imp)
+    elif scaling == 'MinMaxScaler':
+        scaler = MinMaxScaler()
+        X_array2 = scaler.fit_transform(X_imp)
+    else:
+        X_array2 = X_imp.values
+    
+    # ajustar nombre de columnas también aquí
+    n_cols_final2 = X_array2.shape[1]
+    predictors_final2 = predictors_final[:n_cols_final2]
+    
+    X_scaled = pd.DataFrame(X_array2, columns=predictors_final2)
+
     y_imp = y.fillna(y.mean()) if not is_classification else y.fillna(method='ffill').fillna(method='bfill').astype(float)
     if scaling == 'StandardScaler':
         scaler = StandardScaler()
-        X_scaled = pd.DataFrame(scaler.fit_transform(X_imp), columns=predictors)
     elif scaling == 'MinMaxScaler':
         scaler = MinMaxScaler()
-        X_scaled = pd.DataFrame(scaler.fit_transform(X_imp), columns=predictors)
     else:
         X_scaled = X_imp.copy()
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_imp, test_size=test_size/100.0, random_state=int(random_state))
