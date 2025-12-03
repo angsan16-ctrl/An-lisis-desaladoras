@@ -1038,9 +1038,13 @@ st.caption("AplicaciÃ³n creada integrando la lÃ³gica del programa original."
 
 
 # =============================
-# NUEVA SECCIÃN: PestaÃ±as y AnÃ¡lisis Avanzado
+# NUEVA SECCIÃN: PestaÃ±as y AnÃ¡lisis Avanzado con SHAP, LIME y Heatmap
 # =============================
 import streamlit as st
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
@@ -1053,12 +1057,20 @@ from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.mixture import GaussianMixture
-import matplotlib.pyplot as plt
-import io
-import pandas as pd
-import numpy as np
 
-# Crear pestaÃ±as
+# Intentar importar SHAP y LIME
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+
+try:
+    from lime.lime_tabular import LimeTabularExplainer
+    LIME_AVAILABLE = True
+except ImportError:
+    LIME_AVAILABLE = False
+
 if 'datos' in locals():
     tab_graf, tab_avz = st.tabs(["Graficado y resumen estadÃ­stico", "AnÃ¡lisis Avanzado"])
 
@@ -1072,73 +1084,127 @@ if 'datos' in locals():
             var_ref = st.selectbox("Variable de referencia (Y)", todas_vars)
             problem_type = st.radio("Tipo de problema", ["RegresiÃ³n", "ClasificaciÃ³n"], index=0)
             vars_X = st.multiselect("Variables explicativas (X)", todas_vars, default=[v for v in todas_vars if v != var_ref])
+
             if st.button("Calcular importancias"):
-                X = datos[vars_X].copy()
-                y = datos[var_ref].copy()
-                imp = SimpleImputer(strategy="median")
-                X = pd.DataFrame(imp.fit_transform(X), columns=vars_X)
-                y = pd.to_numeric(y, errors='coerce').fillna(y.mean())
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                scaler = StandardScaler()
-                X_train = pd.DataFrame(scaler.fit_transform(X_train), columns=vars_X)
-                X_test = pd.DataFrame(scaler.transform(X_test), columns=vars_X)
+                if len(vars_X) == 0:
+                    st.error("Debes seleccionar al menos una variable explicativa.")
+                else:
+                    X = datos[vars_X].copy()
+                    y = datos[var_ref].copy()
+                    imp = SimpleImputer(strategy="median")
+                    X = pd.DataFrame(imp.fit_transform(X), columns=vars_X)
+                    y = pd.to_numeric(y, errors='coerce').fillna(y.mean())
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                    scaler = StandardScaler()
+                    X_train = pd.DataFrame(scaler.fit_transform(X_train), columns=vars_X)
+                    X_test = pd.DataFrame(scaler.transform(X_test), columns=vars_X)
 
-                importancias = {}
-                def add_series(name, values):
-                    s = pd.Series(values, index=vars_X)
-                    s = (s - s.min()) / (s.max() - s.min() + 1e-12)
-                    importancias[name] = s
+                    importancias = {}
+                    def add_series(name, values):
+                        s = pd.Series(values, index=vars_X)
+                        s = (s - s.min()) / (s.max() - s.min() + 1e-12)
+                        importancias[name] = s
 
-                # Ãrbol de DecisiÃ³n
-                mdl = DecisionTreeRegressor(random_state=42) if problem_type == "RegresiÃ³n" else DecisionTreeClassifier(random_state=42)
-                mdl.fit(X_train, y_train)
-                add_series("Ãrbol", mdl.feature_importances_)
+                    # Ãrbol de DecisiÃ³n
+                    mdl = DecisionTreeRegressor(random_state=42) if problem_type == "RegresiÃ³n" else DecisionTreeClassifier(random_state=42)
+                    mdl.fit(X_train, y_train)
+                    add_series("Ãrbol", mdl.feature_importances_)
 
-                # Random Forest
-                mdl = RandomForestRegressor(n_estimators=200, random_state=42) if problem_type == "RegresiÃ³n" else RandomForestClassifier(n_estimators=200, random_state=42)
-                mdl.fit(X_train, y_train)
-                add_series("RandomForest", mdl.feature_importances_)
+                    # Random Forest
+                    mdl_rf = RandomForestRegressor(n_estimators=200, random_state=42) if problem_type == "RegresiÃ³n" else RandomForestClassifier(n_estimators=200, random_state=42)
+                    mdl_rf.fit(X_train, y_train)
+                    add_series("RandomForest", mdl_rf.feature_importances_)
 
-                # PCA
-                pca = PCA(n_components=min(len(vars_X), 5))
-                pca.fit(X_train)
-                contrib = np.sum(np.abs(pca.components_.T) * pca.explained_variance_ratio_, axis=1)
-                add_series("PCA", contrib)
+                    # PCA
+                    pca = PCA(n_components=min(len(vars_X), 5))
+                    pca.fit(X_train)
+                    contrib = np.sum(np.abs(pca.components_.T) * pca.explained_variance_ratio_, axis=1)
+                    add_series("PCA", contrib)
 
-                # KMeans
-                km = KMeans(n_clusters=min(5, len(X_train)//2), random_state=42, n_init="auto")
-                labels = km.fit_predict(X_train)
-                mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                add_series("KMeans", mi)
-
-                # DBSCAN
-                db = DBSCAN(eps=0.5, min_samples=5)
-                labels = db.fit_predict(X_train)
-                if len(set(labels)) > 1:
+                    # KMeans
+                    km = KMeans(n_clusters=min(5, len(X_train)//2), random_state=42, n_init="auto")
+                    labels = km.fit_predict(X_train)
                     mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                    add_series("DBSCAN", mi)
+                    add_series("KMeans", mi)
 
-                # NN (MLP)
-                mdl = MLPRegressor(hidden_layer_sizes=(64,32), max_iter=300) if problem_type == "RegresiÃ³n" else MLPClassifier(hidden_layer_sizes=(64,32), max_iter=300)
-                mdl.fit(X_train, y_train)
-                pi = permutation_importance(mdl, X_test, y_test, n_repeats=10, random_state=42)
-                add_series("MLP", np.abs(pi.importances_mean))
+                    # DBSCAN
+                    db = DBSCAN(eps=0.5, min_samples=5)
+                    labels = db.fit_predict(X_train)
+                    if len(set(labels)) > 1:
+                        mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
+                        add_series("DBSCAN", mi)
 
-                # Generativo (GMM)
-                gmm = GaussianMixture(n_components=min(5, len(X_train)//2), random_state=42)
-                labels = gmm.fit_predict(X_train)
-                mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
-                add_series("GMM", mi)
+                    # NN (MLP)
+                    mdl_nn = MLPRegressor(hidden_layer_sizes=(64,32), max_iter=300) if problem_type == "RegresiÃ³n" else MLPClassifier(hidden_layer_sizes=(64,32), max_iter=300)
+                    mdl_nn.fit(X_train, y_train)
+                    pi = permutation_importance(mdl_nn, X_test, y_test, n_repeats=10, random_state=42)
+                    add_series("MLP", np.abs(pi.importances_mean))
 
-                # Mostrar resultados
-                df_imp = pd.DataFrame(importancias)
-                st.dataframe(df_imp)
+                    # Generativo (GMM)
+                    gmm = GaussianMixture(n_components=min(5, len(X_train)//2), random_state=42)
+                    labels = gmm.fit_predict(X_train)
+                    mi = mutual_info_classif(X_train.values, labels, discrete_features=False)
+                    add_series("GMM", mi)
 
-                fig, ax = plt.subplots(figsize=(10,6))
-                df_imp.plot(kind='bar', ax=ax)
-                plt.title("Importancia normalizada por mÃ©todo")
-                st.pyplot(fig)
+                    # SHAP
+                    if SHAP_AVAILABLE:
+                        try:
+                            explainer = shap.TreeExplainer(mdl_rf)
+                            shap_values = explainer.shap_values(X_test)
+                            if isinstance(shap_values, list):
+                                vals = np.mean(np.abs(shap_values[0]), axis=0)
+                            else:
+                                vals = np.mean(np.abs(shap_values), axis=0)
+                            add_series("SHAP", vals)
+                        except Exception as e:
+                            st.warning(f"SHAP fallÃ³: {e}")
 
-                buf = io.BytesIO()
-                df_imp.to_excel(buf, index=True)
-                st.download_button("Descargar tabla (Excel)", buf.getvalue(), file_name="importancias.xlsx")
+                    # LIME
+                    if LIME_AVAILABLE:
+                        try:
+                            mode = 'regression' if problem_type == "RegresiÃ³n" else 'classification'
+                            explainer = LimeTabularExplainer(training_data=np.array(X_train), feature_names=vars_X, mode=mode)
+                            idxs = np.random.choice(X_test.index, size=min(10, len(X_test)), replace=False)
+                            agg_weights = pd.Series(0.0, index=vars_X)
+                            for i in idxs:
+                                x_i = X_test.loc[i].values
+                                if mode=='regression':
+                                    exp = explainer.explain_instance(x_i, mdl_rf.predict, num_features=len(vars_X))
+                                else:
+                                    exp = explainer.explain_instance(x_i, mdl_rf.predict_proba, num_features=len(vars_X))
+                                for feat, weight in exp.as_list():
+                                    agg_weights[feat] += abs(weight)
+                            add_series("LIME", agg_weights.values)
+                        except Exception as e:
+                            st.warning(f"LIME fallÃ³: {e}")
+
+                    # Mostrar resultados
+                    df_imp = pd.DataFrame(importancias)
+                    st.subheader("Tabla de importancias (normalizadas)")
+                    st.dataframe(df_imp)
+
+                    # GrÃ¡fico de barras
+                    fig_bar, ax_bar = plt.subplots(figsize=(10,6))
+                    df_imp.plot(kind='bar', ax=ax_bar)
+                    plt.title("Importancia normalizada por mÃ©todo")
+                    st.pyplot(fig_bar)
+
+                    # Heatmap
+                    fig_heat, ax_heat = plt.subplots(figsize=(10,6))
+                    sns.heatmap(df_imp.T, annot=True, cmap="viridis")
+                    plt.title("Heatmap de importancias")
+                    st.pyplot(fig_heat)
+
+                    # Descargas
+                    buf_excel = io.BytesIO()
+                    with pd.ExcelWriter(buf_excel, engine="openpyxl") as writer:
+                        df_imp.to_excel(writer, index=True)
+                    st.download_button("Descargar tabla (Excel)", buf_excel.getvalue(), file_name="importancias_avanzadas.xlsx")
+
+                    buf_bar = io.BytesIO()
+                    fig_bar.savefig(buf_bar, format="png")
+                    st.download_button("Descargar grÃ¡fico de barras (PNG)", buf_bar.getvalue(), file_name="grafico_barras.png")
+
+                    buf_heat = io.BytesIO()
+                    fig_heat.savefig(buf_heat, format="png")
+                    st.download_button("Descargar heatmap (PNG)", buf_heat.getvalue(), file_name="heatmap_importancias.png")
