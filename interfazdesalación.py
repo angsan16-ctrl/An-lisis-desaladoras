@@ -864,6 +864,7 @@ with tab_graf:
 
                 st.subheader("Datos (vista previa)")
                 st.dataframe(datos.head(200))
+                st.session_state["datos"] = datos
 
                 # Construir mapa variable -> columnas
                 try:
