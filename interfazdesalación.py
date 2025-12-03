@@ -1052,6 +1052,7 @@ def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estima
     if variable_objetivo not in datos.columns:
         st.error(f"La variable objetivo '{variable_objetivo}' no estÃ¡ en los datos.")
         return
+    
 
     # Preparar datos
     df = datos.copy()
@@ -1096,6 +1097,22 @@ def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estima
     fig.update_layout(yaxis={'categoryorder':'total ascending'})
     st.plotly_chart(fig, use_container_width=True)
 
+    # Convertir todas las columnas a numéricas
+    X = X.apply(pd.to_numeric, errors='coerce')
+    y = pd.to_numeric(y, errors='coerce')
+    
+    # Eliminar columnas vacías
+    X = X.dropna(axis=1, how='all')
+    
+    # Combinar y eliminar filas con NaN
+    df_final = pd.concat([X, y], axis=1).dropna()
+    X = df_final[X.columns]
+    y = df_final[y.name]
+    
+    # Validar que hay datos suficientes
+    if X.shape[0] < 10 or X.shape[1] < 2:
+        st.error("No hay suficientes datos válidos para entrenar el modelo.")
+        return
 
 
 # ==========================
