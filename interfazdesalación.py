@@ -1062,6 +1062,15 @@ def analisis_random_forest(datos: pd.DataFrame, variable_objetivo: str, n_estima
 
     y = df[variable_objetivo]
     X = df.drop(columns=[variable_objetivo])
+    
+    # Convertir todas las columnas a numéricas, ignorando errores
+    X = X.apply(pd.to_numeric, errors='coerce')
+    y = pd.to_numeric(y, errors='coerce')
+    
+    # Eliminar filas con NaN después de la conversión
+    df_final = pd.concat([X, y], axis=1).dropna()
+    X = df_final[X.columns]
+    y = df_final[y.name]
 
     # Entrenar modelo
     modelo = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, max_features=max_features, random_state=42)
