@@ -1,329 +1,398 @@
-﻿"""
-interfazdesalacion_reconstruida.py
-Reconstrucción desde cero (base: antigua) — única, limpia y sin duplicados.
-Incluye:
- - Dos pestañas: Graficado | Análisis avanzado (incluye importancia de variables)
- - Métodos de importancia: Pearson, Spearman, Mutual Info, RandomForest
- - Botones con keys únicos para evitar StreamlitDuplicateElementId
- - Exportación de resultados a Excel
- - Integración cuidadosa: si el script original 'interfazdesalaciónantigua.py' está presente,
-   intenta importar algunas funciones avanzadas (si existen). Si no, usa implementaciones internas.
-"""
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import tempfile, io, os, sys, importlib.util
+﻿# app_desalacion_ml_streamlit.py
+# Interfaz Streamlit para análisis y modelos (Random Forest, GBM) + SHAP + Permutation
+# Genera pestañas: (1) Gráficas interactivas, (2) Análisis ML avanzado
+# Salidas descargables: tablas de importancias (Excel/CSV), figuras (ZIP), reportes (Excel)
+# Uso: instalar dependencias y ejecutar: streamlit run app_desalacion_ml_streamlit.py
+
+import io
+import os
+import zipfile
+import tempfile
 from pathlib import Path
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.feature_selection import mutual_info_regression
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
-from openpyxl import Workbook
+from typing import List
 
-# --------------------------
-# Configuración
-# --------------------------
-st.set_page_config(page_title="Desalación - Interfaz Reconstruida", layout="wide")
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 
-st.markdown("<h1 style='color:#0B1A33;font-weight:800'>Desalación — Interfaz Reconstruida</h1>", unsafe_allow_html=True)
-st.sidebar.header("Cargar archivo y parámetros")
+import streamlit as st
 
-uploaded = st.sidebar.file_uploader("Sube Excel de desalación", type=["xlsx","xls"], key="uploader_main")
-fig_w = st.sidebar.slider("Ancho figura", 6, 16, 10, key="figw_main")
-fig_h = st.sidebar.slider("Alto figura", 4, 12, 6, key="figh_main")
+# ML
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.inspection import permutation_importance
+
+# optional: SHAP (si no está instalado, avisamos y seguimos con otras importancias)
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except Exception:
+    SHAP_AVAILABLE = False
+
+# -------------------------
+# Config
+# -------------------------
+st.set_page_config(page_title="Desalación — Gráficas y ML", layout="wide")
+st.title("Análisis de datos de desalación — Gráficas y ML avanzadas")
+
+st.markdown("""
+Esta aplicación carga tu Excel de datos (misma lógica de lectura que la interfaz previa) y ofrece:
+
+- Pestaña **Gráficas**: exploración interactiva (Tiempo vs variable, scatter vs variable base)
+- Pestaña **Análisis ML**: modelos Random Forest y Gradient Boosting, importancias (MDI), permutación y SHAP
+- Descarga de resultados (tablas Excel/CSV, figuras en ZIP)
+
+**Nota**: si falta `shap` la app seguirá funcionando pero sin explicadores SHAP. Instala `shap` con `pip install shap` si lo deseas.
+""")
+
+# -------------------------
+# Sidebar: Upload + opciones
+# -------------------------
+st.sidebar.header("Entradas")
+uploaded = st.sidebar.file_uploader("Sube archivo Excel (.xlsx/.xls)", type=["xlsx", "xls"]) 
+
 st.sidebar.markdown("---")
-st.sidebar.caption("Versión reconstruida — limpia, sin duplicados, basada en la interfaz antigua.")
+st.sidebar.header("Parámetros ML")
+test_size = st.sidebar.slider("Tamaño test (fracción)", min_value=0.05, max_value=0.5, value=0.2, step=0.05)
+random_state = st.sidebar.number_input("Random seed", value=42, step=1)
+rf_n_estimators = st.sidebar.number_input("RF n_estimators", value=200, step=10)
+rf_max_depth = st.sidebar.number_input("RF max_depth (0 = None)", value=0, step=1)
+gb_n_estimators = st.sidebar.number_input("GBM n_estimators", value=200, step=10)
 
-# --------------------------
-# Intentar cargar funciones avanzadas del archivo antiguo si existe
-# --------------------------
-def try_import_module_at(path):
-    path = Path(path)
-    if not path.exists():
-        return None
-    try:
-        spec = importlib.util.spec_from_file_location("old_interfaz_module", str(path))
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules["old_interfaz_module"] = mod
-        spec.loader.exec_module(mod)
-        return mod
-    except Exception as e:
-        print("No se pudo importar módulo antiguo:", e)
-        return None
+st.sidebar.markdown("---")
+if not SHAP_AVAILABLE:
+    st.sidebar.warning("`shap` no está instalado. Explicaciones SHAP no estarán disponibles. Ejecuta `pip install shap` y reinicia la app.")
 
-old_mod = try_import_module_at("/mnt/data/interfazdesalaciónantigua.py") or try_import_module_at("/mnt/data/interfazdesalación.py")
+# -------------------------
+# Helper functions
+# -------------------------
 
-# --------------------------
-# Utilidades internas
-# --------------------------
-def detectar_fila_inicio_datos_simple(df_raw):
-    # heurística simple: busca la primera fila con menos valores nulos que la mitad de columnas
-    for i in range(min(10, len(df_raw))):
-        if df_raw.iloc[i].notna().sum() > df_raw.shape[1]//2:
-            return i
-    return 0
-
-def limpiar_serie_a_numero(serie):
-    return pd.to_numeric(serie, errors="coerce")
-
-def construir_datos_desde_excel(tmp_path, hoja_sel=None):
-    xls = pd.ExcelFile(tmp_path)
-    hojas = xls.sheet_names
-    if hoja_sel is None:
-        hoja = hojas[0]
-    else:
-        hoja = hoja_sel if hoja_sel in hojas else hojas[0]
-    df_raw = pd.read_excel(tmp_path, sheet_name=hoja, header=None, engine="openpyxl")
-    fila_inicio = detectar_fila_inicio_datos_simple(df_raw)
-    datos_vals = df_raw.iloc[fila_inicio:, :].reset_index(drop=True)
-    # intentar convertir columnas a números (excepto primera columna que podría ser tiempo)
-    for c in datos_vals.columns:
-        datos_vals[c] = limpiar_serie_a_numero(datos_vals[c])
-    # renombrar columnas con índices para evitar duplicados de nombres
-    datos_vals.columns = [f"col_{i}" for i in range(datos_vals.shape[1])]
-    # crear columna Tiempo desde la segunda columna si tiene formato fecha
-    try:
-        tiempo_col = pd.to_datetime(df_raw.iloc[fila_inicio:, 1].reset_index(drop=True), errors="coerce")
-        if tiempo_col.isnull().all():
-            datos_vals.insert(0, "Tiempo", pd.RangeIndex(start=0, stop=len(datos_vals)))
-        else:
-            datos_vals.insert(0, "Tiempo", tiempo_col)
-    except Exception:
-        datos_vals.insert(0, "Tiempo", pd.RangeIndex(start=0, stop=len(datos_vals)))
-    return datos_vals, hoja, hojas
-
-# --------------------------
-# Funciones de análisis e importancia
-# --------------------------
-def calcular_importancias(datos_df: pd.DataFrame, target_col: str, method: str = "pearson", n_trees: int = 200, random_state: int = 42):
-    cols = [c for c in datos_df.columns if c not in ("Tiempo", target_col)]
-    df = datos_df.copy()
-    for c in cols + [target_col]:
-        df[c] = pd.to_numeric(df[c], errors='coerce')
-    imputer = SimpleImputer(strategy='median')
-    X = imputer.fit_transform(df[cols])
-    y = imputer.fit_transform(df[[target_col]]).ravel()
-    if method == "pearson":
-        out = []
-        for i, c in enumerate(cols):
-            mask = (~np.isnan(df[c])) & (~np.isnan(df[target_col]))
-            if mask.sum() < 2:
-                imp = np.nan
-            else:
-                imp = float(pd.Series(df[c][mask]).corr(pd.Series(df[target_col][mask]), method='pearson'))
-            out.append((c, np.abs(imp) if not np.isnan(imp) else np.nan, imp))
-        df_out = pd.DataFrame(out, columns=["Feature", "Imp_abs", "Corr_pearson"]).sort_values("Imp_abs", ascending=False).reset_index(drop=True)
-        return df_out
-    if method == "spearman":
-        out = []
-        for i, c in enumerate(cols):
-            mask = (~np.isnan(df[c])) & (~np.isnan(df[target_col]))
-            if mask.sum() < 2:
-                imp = np.nan
-            else:
-                imp = float(pd.Series(df[c][mask]).corr(pd.Series(df[target_col][mask]), method='spearman'))
-            out.append((c, np.abs(imp) if not np.isnan(imp) else np.nan, imp))
-        df_out = pd.DataFrame(out, columns=["Feature", "Imp_abs", "Corr_spearman"]).sort_values("Imp_abs", ascending=False).reset_index(drop=True)
-        return df_out
-    if method == "mutual_info":
+def limpiar_serie_a_numero(serie: pd.Series) -> pd.Series:
+    s = serie.astype(str).fillna("").str.strip()
+    s = s.str.replace(r"\s+", " ", regex=True)
+    def to_num(x):
+        if x is None or x == "":
+            return np.nan
         try:
-            mi = mutual_info_regression(X, y, random_state=random_state)
+            # reemplazar coma decimal si corresponde
+            x2 = str(x).replace(' ', '')
+            # extraer primer número
+            import re
+            m = re.search(r"[-+]?\d+[\d\.,]*", x2)
+            if not m:
+                return np.nan
+            numstr = m.group(0)
+            numstr = numstr.replace('.', '').replace(',', '.') if numstr.count(',')>0 and numstr.count('.')==0 else numstr.replace(',', '')
+            return float(numstr)
         except Exception:
-            mi = np.full(len(cols), np.nan)
-        df_out = pd.DataFrame({"Feature": cols, "MI": mi}).sort_values("MI", ascending=False).reset_index(drop=True)
-        return df_out
-    if method == "random_forest":
-        scaler = StandardScaler()
-        Xs = scaler.fit_transform(X)
-        rf = RandomForestRegressor(n_estimators=int(n_trees), random_state=int(random_state), n_jobs=-1)
-        rf.fit(Xs, y)
-        df_out = pd.DataFrame({"Feature": cols, "RF_importance": rf.feature_importances_}).sort_values("RF_importance", ascending=False).reset_index(drop=True)
-        return df_out
-    raise ValueError("Método no soportado")
+            return np.nan
+    return s.apply(to_num)
 
-# --------------------------
-# Funciones fallback para generar gráficas y análisis crítico (versiones simplificadas)
-# --------------------------
-def generar_graficas_por_desalador_internal(datos, desaladores, variable_base, carpeta_salida, mapa_norm_columns=None):
-    # Genera un libro Excel con gráficas simplificadas por variable; devuelve rutas
-    resultados = {}
-    try:
-        os.makedirs(carpeta_salida, exist_ok=True)
-        for d in (desaladores or ["GENERAL"]):
-            wb = Workbook()
+
+def construir_dataframe_desde_excel(path: str, sheet_name=None) -> pd.DataFrame:
+    # Lee hoja, intenta localizar cabeceras; simplificado: si primera fila tiene strings considerarla header
+    df_raw = pd.read_excel(path, sheet_name=sheet_name, header=None, engine="openpyxl")
+    # heurística: si fila 0 contiene más de la mitad strings no nulos -> usar como header
+    primera = df_raw.iloc[0].astype(str).replace('nan','')
+    n_strings = sum(1 for x in primera if str(x).strip()!='' and not str(x).replace('.','',1).isdigit())
+    if n_strings >= df_raw.shape[1]//2:
+        df = pd.read_excel(path, sheet_name=sheet_name, header=0, engine="openpyxl")
+        # convertir columnas numéricas
+        for c in df.columns:
+            df[c] = limpiar_serie_a_numero(df[c])
+        return df
+    else:
+        # si no, reconstruir nombres simples
+        df = pd.read_excel(path, sheet_name=sheet_name, header=None, engine="openpyxl")
+        # usar columnas 1..n como datos y crear nombres genéricos
+        data = df.values
+        cols = [f"Var_{i}" for i in range(data.shape[1])]
+        df2 = pd.DataFrame(data, columns=cols)
+        for c in df2.columns:
+            df2[c] = limpiar_serie_a_numero(df2[c])
+        return df2
+
+
+def guardar_excel_bytes(df_dict: dict) -> bytes:
+    # df_dict: {'sheetname': dataframe}
+    import openpyxl
+    from openpyxl import Workbook
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    buf = io.BytesIO()
+    wb = Workbook()
+    first = True
+    for sheet, df in df_dict.items():
+        if first:
             ws = wb.active
-            ws.title = "Resumen"
-            # poner un simple resumen estadístico
-            resumen = datos.describe(include="all")
-            for r_idx, row in enumerate(resumen.reset_index().values.tolist(), start=1):
-                for c_idx, val in enumerate(row, start=1):
-                    ws.cell(row=r_idx, column=c_idx, value=str(val))
-            archivo = os.path.join(carpeta_salida, f"Graficas_{d}_{variable_base}.xlsx")
-            wb.save(archivo)
-            resultados[d] = archivo
-    except Exception as e:
-        print("Error generando gráficas (internal):", e)
-    return resultados
-
-def analisis_critico_extendido_internal(datos, desaladores, variable_base, valor_critico, carpeta_salida, mapa_norm_columns=None):
-    # Produce un xlsx con estadísticas básicas y copia de filas que exceden valor_critico
-    resultados = {}
-    try:
-        os.makedirs(carpeta_salida, exist_ok=True)
-        df = datos.copy()
-        if variable_base not in df.columns:
-            df = df
+            ws.title = sheet
+            first = False
         else:
-            series = pd.to_numeric(df[variable_base], errors="coerce")
-            df_exceed = df[series > valor_critico]
-            ruta = os.path.join(carpeta_salida, f"AnalisisCritico_{variable_base}.xlsx")
-            df_exceed.to_excel(ruta, index=False)
-            resultados[variable_base] = ruta
-    except Exception as e:
-        print("Error analisis critico (internal):", e)
-    return resultados
+            ws = wb.create_sheet(sheet)
+        for r in dataframe_to_rows(df, index=False, header=True):
+            ws.append(r)
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
 
-# Use module functions if available
-generar_graficas_por_desalador = getattr(old_mod, "generar_graficas_por_desalador", generar_graficas_por_desalador_internal)
-analisis_critico_extendido = getattr(old_mod, "analisis_critico_extendido", analisis_critico_extendido_internal)
+# -------------------------
+# Main UI
+# -------------------------
 
-# --------------------------
-# MAIN: UI cuando se sube archivo
-# --------------------------
 if uploaded is None:
-    st.info("Sube un archivo Excel para comenzar. La app leerá todas las filas y reconstruirá nombres y variables.")
+    st.info("Sube tu archivo Excel en la barra lateral para empezar.")
 else:
-    # Guardar temporal
+    # guardar temporal
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmpf:
         tmpf.write(uploaded.getbuffer())
         tmp_path = tmpf.name
 
     try:
-        datos, hoja_sel, hojas = construir_datos_desde_excel(tmp_path)
+        xls = pd.ExcelFile(tmp_path, engine="openpyxl")
+        hojas = xls.sheet_names
     except Exception as e:
-        st.error(f"Error procesando Excel: {e}")
-        datos = None
+        st.error(f"Error leyendo Excel: {e}")
         hojas = []
 
-    if datos is None:
-        st.error("No se pudieron construir los datos desde el Excel.")
+    if not hojas:
+        st.error("No se detectaron hojas en el Excel.")
     else:
-        # Mostrar vista previa
-        st.subheader("Datos (vista previa)")
+        hoja = st.selectbox("Selecciona hoja", hojas)
+        datos = construir_dataframe_desde_excel(tmp_path, sheet_name=hoja)
+        st.success(f"Hoja '{hoja}' cargada — filas={datos.shape[0]} columnas={datos.shape[1]}")
+
+        # Simplificar nombres
+        datos.columns = [str(c).strip() for c in datos.columns]
+
+        # Detectar columna tiempo (si hay una columna datetime o llamada 'tiempo'/'date')
+        tiempo_col = None
+        for c in datos.columns:
+            if 'time' in c.lower() or 'fecha' in c.lower() or 'date' in c.lower():
+                tiempo_col = c
+                break
+            if pd.api.types.is_datetime64_any_dtype(datos[c]):
+                tiempo_col = c
+                break
+        if tiempo_col is not None:
+            datos['__TIEMPO__'] = pd.to_datetime(datos[tiempo_col], errors='coerce')
+        else:
+            datos['__TIEMPO__'] = pd.RangeIndex(start=0, stop=len(datos))
+
+        # Mostrar preview
+        st.subheader("Vista previa de datos")
         st.dataframe(datos.head(200))
 
-        # Detectar posibles desaladores si hubiera nombres (intento simple sobre columnas originales)
-        desaladores_detectados = []
-        # (en reconstrucción simple no intentamos mapear C11 etc.; se puede añadir luego)
-        # Tabs: Graficado | Análisis avanzado
-        tab1, tab2 = st.tabs(["Graficado de variables", "Análisis avanzado"])
+        # Pestañas
+        tab1, tab2 = st.tabs(["Gráficas", "Análisis ML avanzado"])
 
-        # --- TAB 1: Graficado ---
+        # -------------------------
+        # TAB: Graficas
+        # -------------------------
         with tab1:
-            st.subheader("Graficado de variables")
-            cols_plot = [c for c in datos.columns if c != "Tiempo"]
-            if not cols_plot:
-                st.info("No hay columnas numéricas para graficar.")
+            st.header("Explorador gráfico")
+            numeric_cols = [c for c in datos.columns if pd.api.types.is_numeric_dtype(datos[c]) and c!='__TIEMPO__']
+            if not numeric_cols:
+                st.info("No se detectaron columnas numéricas para graficar.")
             else:
-                ycol = st.selectbox("Variable a graficar (Y)", options=cols_plot, index=0, key="select_y")
-                xmode = st.radio("Eje X", ['Tiempo','Índice'], index=0, key="radio_xmode")
-                fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-                try:
-                    if xmode == "Tiempo":
-                        ax.scatter(pd.to_datetime(datos['Tiempo']), datos[ycol], s=10, alpha=0.7)
-                        ax.set_xlabel("Tiempo")
-                    else:
-                        ax.scatter(datos.index, datos[ycol], s=10, alpha=0.7)
-                        ax.set_xlabel("Índice")
-                    ax.set_ylabel(str(ycol))
-                    ax.grid(True)
-                    st.pyplot(fig)
-                except Exception as e:
-                    st.error(f"Error graficando: {e}")
+                ycol = st.selectbox("Variable (Y)", options=numeric_cols, index=0)
+                xmode = st.radio("Eje X", ['Tiempo', 'Otra variable numérica'])
+                fig, ax = plt.subplots(figsize=(10,4))
+                if xmode == 'Tiempo':
+                    ax.scatter(datos['__TIEMPO__'], datos[ycol], s=10, alpha=0.6)
+                    ax.set_xlabel('Tiempo')
+                else:
+                    xcol = st.selectbox('Eje X (variable)', options=[c for c in numeric_cols if c!=ycol])
+                    ax.scatter(datos[xcol], datos[ycol], s=10, alpha=0.6)
+                    ax.set_xlabel(xcol)
+                ax.set_ylabel(ycol)
+                ax.grid(True)
+                st.pyplot(fig)
 
-                st.markdown("---")
-                st.write("Opciones de exportación de la gráfica y datos:")
+                # permitir descargar figura
                 buf = io.BytesIO()
-                fig.savefig(buf, format="png", bbox_inches="tight")
+                fig.savefig(buf, format='png', bbox_inches='tight')
                 buf.seek(0)
-                st.download_button("Descargar imagen (PNG)", data=buf, file_name=f"graf_{ycol}.png", mime="image/png", key="dl_png")
+                st.download_button("Descargar figura (PNG)", data=buf, file_name=f"grafica_{ycol}.png", mime='image/png')
 
-        # --- TAB 2: Análisis avanzado ---
+        # -------------------------
+        # TAB: Análisis ML avanzado
+        # -------------------------
         with tab2:
-            st.subheader("Análisis avanzado y exportaciones")
-            cols_for_target = [c for c in datos.columns if c != "Tiempo"]
-            target = st.selectbox("Selecciona variable objetivo (target)", options=cols_for_target, index=0, key="select_target")
-            metodo = st.selectbox("Método de importancia", options=["pearson","spearman","mutual_info","random_forest"], index=0, key="select_method")
-            n_trees = st.number_input("Número de árboles (RF)", min_value=10, max_value=2000, value=200, step=10, key="input_ntrees")
+            st.header("Análisis de importancia de variables — Modelos y SHAP")
 
-            if st.button("Calcular importancias", key="btn_calc_import"):
-                with st.spinner("Calculando importancias..."):
-                    try:
-                        res = calcular_importancias(datos, target, method=metodo, n_trees=n_trees)
-                        st.success("Importancias calculadas")
-                        st.dataframe(res.head(200))
-                        # elegir columna de importancia
-                        imp_cols = [c for c in res.columns if any(x in c.lower() for x in ['imp','mi','rf','corr'])]
-                        if imp_cols:
-                            imp_col = imp_cols[0]
-                            top = res.head(20).set_index("Feature")
-                            st.bar_chart(top[imp_col])
-                        st.markdown(f"**Variable más importante según {metodo}:** {res.iloc[0]['Feature'] if not res.empty else 'N/A'}")
-                        # permitir exportar resultados
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                            res.to_excel(writer, index=False, sheet_name="Importancias")
-                            writer.save()
-                        buffer.seek(0)
-                        st.download_button("Descargar importancias (.xlsx)", data=buffer, file_name=f"importancias_{target}_{metodo}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_imp_xlsx")
-                    except Exception as e:
-                        st.error(f"Error calculando importancias: {e}")
+            # Selección objetivo y predictores
+            all_numeric = [c for c in datos.columns if pd.api.types.is_numeric_dtype(datos[c])]
+            if not all_numeric:
+                st.info("No hay columnas numéricas para entrenar modelos.")
+            else:
+                target = st.selectbox("Selecciona variable objetivo (target)", options=all_numeric)
+                predictors = st.multiselect("Selecciona predictores (si vacío se usarán todas las columnas numéricas menos target)", options=[c for c in all_numeric if c!=target])
+                if not predictors:
+                    X = datos[[c for c in all_numeric if c!=target]].copy()
+                else:
+                    X = datos[predictors].copy()
+                y = datos[target].copy()
 
-            st.markdown("---")
-            st.write("Acciones avanzadas (generar gráficas por desalador / análisis crítico):")
-            colA, colB = st.columns(2)
-            with colA:
-                val_crit = st.number_input("Valor crítico (para análisis)\", value=0.0, format=\"%.6f\", key=\"input_valcrit")
-                if st.button("Ejecutar análisis crítico\", key=\"btn_analisis_critico"):
-                    out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Analisis_Criticos'
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    try:
-                        archivos = analisis_critico_extendido(datos, [], target, float(val_crit), str(out_dir), None)
-                        st.success(f'Análisis crítico. Archivos: {len(archivos)}')
-                        for k,v in archivos.items():
-                            try:
-                                with open(v, "rb") as f:
-                                    st.download_button(f"Descargar {Path(v).name}", data=f, file_name=Path(v).name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_crit_{k}")
-                            except Exception as e:
-                                st.write(f"No se pudo preparar descarga para {v}: {e}")
-                    except Exception as e:
-                        st.error(f'Error en análisis crítico: {e}')
-            with colB:
-                if st.button("Generar gráficas por desalador", key="btn_gen_grafs"):
-                    out_dir = Path.cwd() / 'Resultados_Desalacion_App' / 'Graficas'
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    try:
-                        archivos_g = generar_graficas_por_desalador(datos, [], target, str(out_dir), None)
-                        st.success(f'Gráficas generadas. Archivos: {len(archivos_g)}')
-                        for k,v in archivos_g.items():
-                            try:
-                                with open(v, "rb") as f:
-                                    st.download_button(f"Descargar {Path(v).name}", data=f, file_name=Path(v).name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_graf_{k}")
-                            except Exception as e:
-                                st.write(f"No se pudo preparar descarga para {v}: {e}")
-                    except Exception as e:
-                        st.error(f'Error generando gráficas: {e}')
+                # limpiar NaNs: eliminar filas sin target o con todos predictores NaN
+                mask_good = y.notna() & X.notna().any(axis=1)
+                X = X[mask_good]
+                y = y[mask_good]
 
-        # Exportar datos procesados
-        st.markdown("---")
-        if st.button("Descargar datos procesados (Excel)", key="btn_dl_datos_proc"):
-            try:
-                buf = io.BytesIO()
-                datos.to_excel(buf, index=False, engine="openpyxl")
-                buf.seek(0)
-                st.download_button("Descargar archivo", data=buf, file_name="datos_procesados_desalacion.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_datos_proc")
-            except Exception as e:
-                st.error(f"Error preparando exportación: {e}")
+                st.write(f"Filas para ML: {len(y)} — variables: {list(X.columns)}")
 
-st.caption("Interfaz reconstruida — basada en la versión antigua; limpia y lista para ejecutar.")
+                run_train = st.button("Entrenar modelos y calcular importancias")
+
+                if run_train:
+                    # dividir
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=int(random_state))
+
+                    results = {}
+
+                    # Random Forest
+                    rf = RandomForestRegressor(n_estimators=int(rf_n_estimators), max_depth=(None if int(rf_max_depth)==0 else int(rf_max_depth)), random_state=int(random_state), n_jobs=-1)
+                    rf.fit(X_train, y_train)
+                    ypred = rf.predict(X_test)
+                    results['RF'] = {
+                        'model': rf,
+                        'r2': r2_score(y_test, ypred),
+                        'rmse': mean_squared_error(y_test, ypred, squared=False)
+                    }
+
+                    # GBM
+                    gb = GradientBoostingRegressor(n_estimators=int(gb_n_estimators), random_state=int(random_state))
+                    gb.fit(X_train, y_train)
+                    ypred_gb = gb.predict(X_test)
+                    results['GB'] = {
+                        'model': gb,
+                        'r2': r2_score(y_test, ypred_gb),
+                        'rmse': mean_squared_error(y_test, ypred_gb, squared=False)
+                    }
+
+                    st.success("Modelos entrenados — calculando importancias...")
+
+                    # 1) Importancia MDI (feature_importances_)
+                    mdi_frames = {}
+                    for name, info in results.items():
+                        mod = info['model']
+                        if hasattr(mod, 'feature_importances_'):
+                            imp = mod.feature_importances_
+                            df_imp = pd.DataFrame({'feature': X.columns, f'importance_{name}': imp})
+                            df_imp = df_imp.sort_values(by=f'importance_{name}', ascending=False).reset_index(drop=True)
+                            mdi_frames[name] = df_imp
+
+                    # 2) Permutation importance (on test)
+                    perm_frames = {}
+                    for name, info in results.items():
+                        mod = info['model']
+                        try:
+                            p = permutation_importance(mod, X_test, y_test, n_repeats=20, random_state=int(random_state), n_jobs=-1)
+                            dfp = pd.DataFrame({'feature': X.columns, f'perm_importance_{name}_mean': p.importances_mean, f'perm_importance_{name}_std': p.importances_std})
+                            dfp = dfp.sort_values(by=f'perm_importance_{name}_mean', ascending=False).reset_index(drop=True)
+                            perm_frames[name] = dfp
+                        except Exception as e:
+                            st.warning(f"Permutación falló para {name}: {e}")
+
+                    # 3) SHAP values (if available)
+                    shap_frames = {}
+                    if SHAP_AVAILABLE:
+                        try:
+                            # usar TreeExplainer si posible
+                            expl_rf = shap.TreeExplainer(results['RF']['model'])
+                            shap_vals_rf = expl_rf.shap_values(X_test)
+                            # shap_vals_rf shape: (n_samples, n_features) for reg
+                            mean_abs = np.abs(shap_vals_rf).mean(axis=0)
+                            dfsh = pd.DataFrame({'feature': X.columns, 'shap_mean_abs_RF': mean_abs}).sort_values('shap_mean_abs_RF', ascending=False).reset_index(drop=True)
+                            shap_frames['RF'] = dfsh
+                            expl_gb = shap.TreeExplainer(results['GB']['model'])
+                            shap_vals_gb = expl_gb.shap_values(X_test)
+                            mean_abs_gb = np.abs(shap_vals_gb).mean(axis=0)
+                            dfsh2 = pd.DataFrame({'feature': X.columns, 'shap_mean_abs_GB': mean_abs_gb}).sort_values('shap_mean_abs_GB', ascending=False).reset_index(drop=True)
+                            shap_frames['GB'] = dfsh2
+                        except Exception as e:
+                            st.warning(f"Cálculo SHAP falló: {e}")
+
+                    # 4) Consolidar resumen
+                    # start from features
+                    resumen = pd.DataFrame({'feature': X.columns})
+                    for name, df_imp in mdi_frames.items():
+                        resumen = resumen.merge(df_imp, on='feature', how='left')
+                    for name, dfp in perm_frames.items():
+                        resumen = resumen.merge(dfp, on='feature', how='left')
+                    for name, dfs in shap_frames.items():
+                        resumen = resumen.merge(dfs, on='feature', how='left')
+
+                    # show model performance
+                    st.subheader('Rendimiento de modelos (test)')
+                    perf = pd.DataFrame([{ 'model': k, 'r2': v['r2'], 'rmse': v['rmse'] } for k,v in results.items()])
+                    st.dataframe(perf)
+
+                    st.subheader('Tabla de importancias combinadas')
+                    st.dataframe(resumen)
+
+                    # Gráficos de importancias (MDI y Permutation)
+                    st.subheader('Gráficas de importancias')
+                    figs = []
+                    for name, df_imp in mdi_frames.items():
+                        fig, ax = plt.subplots(figsize=(8,4))
+                        ax.barh(df_imp['feature'].iloc[::-1], df_imp[f'importance_{name}'].iloc[::-1])
+                        ax.set_title(f'Importancia MDI — {name}')
+                        ax.set_xlabel('importancia')
+                        ax.grid(True)
+                        st.pyplot(fig)
+                        figs.append((f'mdi_{name}.png', fig))
+
+                    for name, dfp in perm_frames.items():
+                        fig, ax = plt.subplots(figsize=(8,4))
+                        ax.barh(dfp['feature'].iloc[::-1], dfp[f'perm_importance_{name}_mean'].iloc[::-1])
+                        ax.set_title(f'Importancia por permutación — {name}')
+                        ax.set_xlabel('mean decrease in score (perm)')
+                        ax.grid(True)
+                        st.pyplot(fig)
+                        figs.append((f'perm_{name}.png', fig))
+
+                    if SHAP_AVAILABLE and shap_frames:
+                        st.subheader('SHAP mean absolute (ranking)')
+                        for name, dfs in shap_frames.items():
+                            fig, ax = plt.subplots(figsize=(8,4))
+                            ax.barh(dfs['feature'].iloc[::-1], dfs.iloc[::-1,1].values)
+                            ax.set_title(f'SHAP mean abs — {name}')
+                            ax.grid(True)
+                            st.pyplot(fig)
+                            figs.append((f'shap_{name}.png', fig))
+
+                    # Preparar descargas: Excel con resumen + CSV SHAP (si existe) + ZIP con figuras
+                    out_files = {}
+                    bytes_excel = guardar_excel_bytes({'Importancias': resumen, 'Rendimiento': perf})
+                    out_files['importancias_resumen.xlsx'] = bytes_excel
+
+                    # SHAP per-sample matrix (opcional) — guardar si calculado
+                    if SHAP_AVAILABLE and 'RF' in shap_frames:
+                        try:
+                            # guardar shap matrix para RF
+                            expl = shap.TreeExplainer(results['RF']['model'])
+                            shap_vals = expl.shap_values(X)
+                            df_shap_matrix = pd.DataFrame(shap_vals, columns=X.columns)
+                            out_files['shap_values_RF.csv'] = df_shap_matrix.to_csv(index=False).encode('utf-8')
+                        except Exception:
+                            pass
+
+                    # ZIP figuras
+                    zipbuf = io.BytesIO()
+                    with zipfile.ZipFile(zipbuf, 'w') as zf:
+                        for fname, fig in figs:
+                            imgbuf = io.BytesIO()
+                            fig.savefig(imgbuf, format='png', bbox_inches='tight')
+                            imgbuf.seek(0)
+                            zf.writestr(fname, imgbuf.read())
+                    zipbuf.seek(0)
+                    out_files['figuras.zip'] = zipbuf.getvalue()
+
+                    # Botones de descarga
+                    st.markdown('---')
+                    st.subheader('Descargas')
+                    for name, b in out_files.items():
+                        st.download_button(label=f"Descargar {name}", data=b, file_name=name)
+
+                    st.success('Análisis completado. Revisa gráficas y descarga los ficheros.')
+
+# FIN
