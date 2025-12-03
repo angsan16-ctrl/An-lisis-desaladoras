@@ -1282,8 +1282,14 @@ def advanced_analysis_tab(datos: pd.DataFrame, mapa_norm_columns: dict):
     # SHAP
     if SHAP_AVAILABLE:
         try:
-            explainer = shap.Explainer(results['RandomForest']['model'], X_train)
-            shap_values = explainer(X_test)
+            # SHAP con check_additivity desactivado (evita errores típicos con RandomForest)
+            explainer = shap.TreeExplainer(results['RandomForest']['model'])
+            
+            shap_values = explainer.shap_values(
+                X_test,
+                check_additivity=False
+            )
+
             # Compute mean absolute shap value per feature
             mean_abs_shap = np.mean(np.abs(shap_values.values), axis=0).tolist()
             results['SHAP'] = {'shap_values': shap_values.values.tolist(), 'mean_abs_shap': mean_abs_shap}
