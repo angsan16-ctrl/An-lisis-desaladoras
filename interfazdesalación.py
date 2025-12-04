@@ -1231,7 +1231,7 @@ with tab_rf:
                 
                         # 2) SHAP Summary (bar)
                         st.write("### SHAP Summary (bar)")
-                        fig = plt.figure(figsize=(8,16))
+                        fig = plt.figure(figsize=(12,6))
                         shap.summary_plot(shap_values, X, plot_type="bar", show=False)
                         st.pyplot(fig)
                         plt.close(fig)
