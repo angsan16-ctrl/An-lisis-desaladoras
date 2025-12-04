@@ -1,11 +1,10 @@
 streamlit
 pandas
 numpy
-openpyxl
-matplotlib
 scikit-learn
+matplotlib
+openpyxl
 shap
 lime
-tensorflow
-pillow
-openpyxl
+xgboost
+lightgbm
