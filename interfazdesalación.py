@@ -70,24 +70,24 @@ with tab_graf:
     from openpyxl.utils.dataframe import dataframe_to_rows
     from openpyxl.drawing.image import Image as xlImage
     
-logo_path = Path("logo_repsol.png")
-if logo_path.exists():
-    try:
-        logo_original = Image.open(logo_path).convert("RGBA")
-        blur_radius = 8
-        padding = blur_radius * 3
-        new_size = (logo_original.width + padding, logo_original.height + padding)
-        final_logo = Image.new("RGBA", new_size, (255,255,255,0))
-        center_x = (new_size[0] - logo_original.width) // 2
-        center_y = (new_size[1] - logo_original.height) // 2
-        final_logo.paste(logo_original, (center_x, center_y), logo_original)
-        mask = final_logo.split()[3]
-        white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
-        white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
-        final_logo = Image.alpha_composite(white_halo, final_logo)
-        st.image(final_logo, width=140)
-    except Exception:
-        st.info("Error cargando logo_repsol.png")
+    logo_path = Path("logo_repsol.png")
+    if logo_path.exists():
+        try:
+            logo_original = Image.open(logo_path).convert("RGBA")
+            blur_radius = 8
+            padding = blur_radius * 3
+            new_size = (logo_original.width + padding, logo_original.height + padding)
+            final_logo = Image.new("RGBA", new_size, (255,255,255,0))
+            center_x = (new_size[0] - logo_original.width) // 2
+            center_y = (new_size[1] - logo_original.height) // 2
+            final_logo.paste(logo_original, (center_x, center_y), logo_original)
+            mask = final_logo.split()[3]
+            white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
+            white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
+            final_logo = Image.alpha_composite(white_halo, final_logo)
+            st.image(final_logo, width=140)
+        except Exception:
+            st.info("Error cargando logo_repsol.png")
 
     # -------------------------
     # ConfiguraciÃ³n de la app
@@ -1226,48 +1226,24 @@ with tab_rf:
                         st.pyplot(fig)
                         plt.close(fig)
                 
-                        # 3) SHAP Beeswarm
-                        st.write("### SHAP Beeswarm")
-                        fig = plt.figure(figsize=(8,16))
-                        shap.summary_plot(shap_values, X, show=False)
-                        st.pyplot(fig)
-                        plt.close(fig)
-                
-                        # 4) SHAP Dependence plot
-                        col_dependence = st.selectbox("Variable para dependence plot", list(X.columns))
-                        fig = plt.figure(figsize=(8,6))
-                        shap.dependence_plot(
-                            col_dependence,
-                            shap_values,
-                            X,
-                            ax=plt.gca(),
-                            show=False
-                        )
-                        st.pyplot(fig)
-                        plt.close(fig)
-                
-                        # 5) Force plot (versión matplotlib, 100% compatible)
-                        st.write("### SHAP Force Plot (local)")
-                        idx_inst = st.number_input("Índice de la instancia", 0, len(X)-1, 0)
-                
-                        fig = shap.plots.force(
-                            explainer.expected_value,
-                            shap_values[idx_inst],
-                            matplotlib=True
-                        )
-                        st.pyplot(fig)
-                        plt.close(fig)
                         
                         st.write("### SHAP Heatmap")
-                        fig = plt.figure(figsize=(10,7))
-                        shap.plots.heatmap(
-                            shap_values,
-                            max_display=30,
-                            show=False
-                        )
-                        st.pyplot(fig)
-                        plt.close(fig)
-
+                        try:
+                            # Convertir a objeto SHAP Explanation
+                            shap_exp = shap.Explanation(
+                                values=shap_values,
+                                base_values=explainer.expected_value,
+                                data=X.fillna(0).values,
+                                feature_names=X.columns
+                            )
+                        
+                            fig = plt.figure(figsize=(10,7))
+                            shap.plots.heatmap(shap_exp, max_display=30, show=False)
+                            st.pyplot(fig)
+                            plt.close(fig)
+                        
+                        except Exception as e:
+                            st.error(f"Error generando SHAP heatmap: {e}")
                 
                     except Exception as e:
                         st.error(f"Error calculando SHAP: {e}")
