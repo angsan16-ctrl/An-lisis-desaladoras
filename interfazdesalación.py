@@ -10,6 +10,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
+# para nuevos modelos y explicadores
+import shap
+from lime.lime_tabular import LimeTabularExplainer
+import xgboost as xgb
+import lightgbm as lgb
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.linear_model import Ridge, Lasso
+import streamlit.components.v1 as components
+import io
 
 # =============================================================
 # CONFIGURACIÓN BÁSICA
@@ -1061,80 +1070,208 @@ with tab_graf:
     # FIN DEL ARCHIVO
 
 # =============================================================
-# 2) PESTAÑA ANÁLISIS (Random Forest)
+# 2) PESTAÑA ANÁLISIS (AMPLIADA: modelos, SHAP, LIME, exclusión)
 # =============================================================
 with tab_rf:
-    st.header("Importancia de variables mediante Random Forest")
-    st.write("Analiza la importancia de TODAS las variables frente a una seleccionada.")
+    st.header("Análisis de importancia y explicaciones (RandomForest / SHAP / LIME)")
+    st.write("Selecciona objetivo, desalador y modelo. Puedes excluir variables antes del entrenamiento.")
 
-    # -------------------------------------------------------------
-    # Verificar que 'datos' existe (proviene de la pestaña principal)
-    # -------------------------------------------------------------
     if "datos" not in st.session_state:
         st.warning("Primero carga un archivo en la pestaña *Graficado*. Luego vuelve aquí.")
     else:
         datos = st.session_state["datos"].copy()
 
-        # ---------------------------------------------------------
-        # Selección de variable objetivo
-        # ---------------------------------------------------------
+        # columnas numéricas disponibles (sin Tiempo)
         columnas_num = [c for c in datos.columns if c != "Tiempo"]
 
-        target = st.selectbox("Variable objetivo (Y)", columnas_num)
+        # Detectar desaladores presentes por token C##
+        import re
+        patron_desal = re.compile(r"(c[\-\_ ]?\d{1,3})", flags=re.IGNORECASE)
+        desaladores_detectados = set()
+        for n in datos.columns:
+            m = patron_desal.search(str(n))
+            if m:
+                desaladores_detectados.add(re.sub(r"[\-_\s]", "", m.group(1)).upper())
+        desaladores_detectados = sorted(list(desaladores_detectados))
+        if not desaladores_detectados:
+            desaladores_detectados = []
 
-        # ---------------------------------------------------------
-        # Preparar datos X,Y
-        # ---------------------------------------------------------
-        df_model = datos.drop(columns=["Tiempo"]).copy()
-        df_model = df_model.dropna(subset=[target])
+        # Selector desalador: GENERAL + detectados
+        opciones_desal = ["GENERAL"] + desaladores_detectados
+        desal_sel = st.selectbox("Desalador para análisis", options=opciones_desal, index=0)
 
-        X = df_model.drop(columns=[target])
-        y = df_model[target]
+        # Filtrar columnas según desalador seleccionado
+        def columnas_para_desalador(df_cols, desal_sel):
+            if desal_sel == "GENERAL":
+                return [c for c in df_cols if c != "Tiempo"]
+            token = desal_sel.lower()
+            cols = []
+            comunes = []
+            for c in df_cols:
+                if c == "Tiempo":
+                    continue
+                if token in str(c).lower().replace(" ", "").replace("-", "").replace("_", ""):
+                    cols.append(c)
+                else:
+                    # consideramos comunes si no contienen token
+                    comunes.append(c)
+            # devolvemos cols seleccionadas + comunes para permitir uso conjunto
+            return sorted(list(set(cols + comunes)), key=lambda x: str(x))
+        columnas_disponibles = columnas_para_desalador(datos.columns, desal_sel)
 
-        if X.shape[0] < 10:
-            st.error("Hay muy pocos datos válidos para entrenar el modelo.")
+        # Selección de variable objetivo (Y)
+        if not columnas_disponibles:
+            st.error("No hay columnas disponibles para análisis.")
         else:
-            # -----------------------------------------------------
-            # Entrenamiento del Random Forest
-            # -----------------------------------------------------
-            n_estim = st.slider("Nº árboles", 50, 500, 200)
+            target = st.selectbox("Variable objetivo (Y)", columnas_disponibles)
 
-            rf = RandomForestRegressor(n_estimators=n_estim, random_state=42)
-            rf.fit(X, y)
+            # Multiselect para excluir variables
+            excluir = st.multiselect("Variables a excluir del análisis (opcional)", options=[c for c in columnas_disponibles if c != target])
 
-            importancias = rf.feature_importances_
-            ranking = pd.DataFrame({
-                "Variable": X.columns,
-                "Importancia": importancias
-            }).sort_values("Importancia", ascending=False)
+            # Construcción de X,y aplicando exclusión y eliminando NaNs en target
+            df_model = datos.drop(columns=["Tiempo"]).copy()
+            df_model = df_model.dropna(subset=[target])
+            # eliminar columnas excluidas y la propia target de X
+            X = df_model.drop(columns=[target] + excluir, errors='ignore')
+            y = df_model[target].astype(float)
 
-            st.subheader("Resumen de Importancias")
-            st.dataframe(ranking)
+            if X.shape[0] < 10 or X.shape[1] == 0:
+                st.error("Hay muy pocos datos válidos o no hay variables para entrenar el modelo.")
+            else:
+                # Selector de modelo
+                modelo_sel = st.selectbox("Modelo", [
+                    "Random Forest",
+                    "Gradient Boosting",
+                    "XGBoost",
+                    "LightGBM",
+                    "Ridge",
+                    "Lasso"
+                ])
 
-            # -----------------------------------------------------
-            # Tamaño del gráfico mediante sliders
-            # -----------------------------------------------------
-            st.sidebar.subheader("Tamaño gráfico Random Forest")
-            fig_w_rf = st.sidebar.slider("Ancho gráfico RF", 6, 20, 10)
-            fig_h_rf = st.sidebar.slider("Alto gráfico RF", 4, 15, 10)
-            
-            # -----------------------------------------------------
-            # Gráfico
-            # -----------------------------------------------------
-            st.subheader("Gráfico de Importancias")
-            fig, ax = plt.subplots(figsize=(fig_w_rf, fig_h_rf))
-            ax.barh(ranking["Variable"], ranking["Importancia"])
-            ax.invert_yaxis()
-            ax.set_xlabel("Importancia")
-            ax.set_ylabel("Variable")
-            ax.set_title(f"Importancia de variables para predecir: {target}")
-            st.pyplot(fig)
+                # Parámetros básicos
+                n_estim = st.slider("Nº árboles (si aplica)", 50, 1000, 200)
+                max_depth = st.slider("Max depth (si aplica, 0=auto)", 0, 30, 6)
+                usar_shap = st.checkbox("Calcular SHAP (explicación global y local)", value=True)
+                usar_lime = st.checkbox("Habilitar LIME (explicación local por instancia)", value=False)
 
-            # -----------------------------------------------------
-            # Exportar resultados
-            # -----------------------------------------------------
-            st.subheader("Exportar resultados")
-            csv = ranking.to_csv(index=False).encode('utf-8')
-            st.download_button("Descargar CSV de importancias", data=csv,
-                               file_name="importancias_random_forest.csv",
-                               mime="text/csv")
+                # Entrenar modelo según selección
+                model = None
+                if modelo_sel == "Random Forest":
+                    from sklearn.ensemble import RandomForestRegressor
+                    model = RandomForestRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+                elif modelo_sel == "Gradient Boosting":
+                    model = GradientBoostingRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42)
+                elif modelo_sel == "XGBoost":
+                    model = xgb.XGBRegressor(n_estimators=n_estim, max_depth=(0 if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+                elif modelo_sel == "LightGBM":
+                    model = lgb.LGBMRegressor(n_estimators=n_estim, max_depth=( -1 if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+                elif modelo_sel == "Ridge":
+                    model = Ridge()
+                elif modelo_sel == "Lasso":
+                    model = Lasso()
+
+                # Entrenamiento
+                with st.spinner("Entrenando modelo..."):
+                    model.fit(X.fillna(0), y)  # rellenamos NaNs para entrenamiento simple
+
+                st.success("Modelo entrenado")
+                # Importancias simples (si el modelo tiene atributo feature_importances_)
+                if hasattr(model, "feature_importances_"):
+                    importancias = model.feature_importances_
+                    ranking = pd.DataFrame({"Variable": X.columns, "Importancia": importancias}).sort_values("Importancia", ascending=False)
+                    st.subheader("Ranking por importancia (modelo)")
+                    st.dataframe(ranking)
+                    fig, ax = plt.subplots(figsize=(8, max(4, 0.2*len(ranking))))
+                    ax.barh(ranking["Variable"], ranking["Importancia"])
+                    ax.invert_yaxis()
+                    ax.set_xlabel("Importancia")
+                    ax.set_ylabel("Variable")
+                    st.pyplot(fig)
+                else:
+                    st.info("El modelo seleccionado no proporciona 'feature_importances_' (p.ej. Ridge/Lasso). Usar SHAP para explicaciones detalladas.")
+
+                # ---------------------------
+                # SHAP: resumen, beeswarm, dependence, force
+                # ---------------------------
+                if usar_shap:
+                    st.markdown("---")
+                    st.subheader("SHAP - explicaciones globales y locales")
+
+                    try:
+                        explainer = None
+                        # Para modelos tipo tree, usar TreeExplainer; para lineales usar LinearExplainer o KernelExplainer
+                        if modelo_sel in ["Random Forest", "Gradient Boosting", "XGBoost", "LightGBM"]:
+                            explainer = shap.TreeExplainer(model)
+                            shap_values = explainer.shap_values(X.fillna(0))
+                        else:
+                            # Linear/otros
+                            explainer = shap.LinearExplainer(model, X.fillna(0), feature_perturbation="interventional")
+                            shap_values = explainer.shap_values(X.fillna(0))
+                        # SHAP summary bar
+                        st.write("**SHAP summary (bar)**")
+                        fig = plt.figure(figsize=(8,4))
+                        shap.summary_plot(shap_values, X, plot_type="bar", show=False)
+                        st.pyplot(fig)
+
+                        # SHAP beeswarm
+                        st.write("**SHAP beeswarm (summary)**")
+                        fig = plt.figure(figsize=(8,6))
+                        shap.summary_plot(shap_values, X, show=False)
+                        st.pyplot(fig)
+
+                        # Dependence plot (elige variable)
+                        col_dependence = st.selectbox("Variable para SHAP dependence plot", options=list(X.columns))
+                        st.write(f"Dependence plot para: {col_dependence}")
+                        fig = plt.figure(figsize=(8,6))
+                        # shap.dependence_plot acepta índice o nombre
+                        shap.dependence_plot(col_dependence, shap_values, X.fillna(0), show=False)
+                        st.pyplot(fig)
+
+                        # Force plot (explicación local de una instancia)
+                        st.write("**Force plot (explicación local)**")
+                        idx_inst = st.number_input("Índice de instancia para force plot (0 .. n-1)", min_value=0, max_value=max(0, len(X)-1), value=0, step=1)
+                        # generar HTML del force plot y renderizar con components.html
+                        try:
+                            shap_html = shap.force_plot(explainer.expected_value, shap_values[idx_inst], X.iloc[idx_inst])._repr_html_()
+                            components.html(shap_html, height=300)
+                        except Exception as e_force:
+                            st.write("No se pudo dibujar force plot (depende de la versión de shap). Error:", e_force)
+                    except Exception as e:
+                        st.error(f"Error calculando SHAP: {e}")
+
+                # ---------------------------
+                # LIME: explicación local para una instancia
+                # ---------------------------
+                if usar_lime:
+                    st.markdown("---")
+                    st.subheader("LIME - explicación local (instancia)")
+                    try:
+                        i_inst = st.number_input("Índice para explicación LIME (0 .. n-1)", min_value=0, max_value=max(0, len(X)-1), value=0, step=1)
+                        explainer_lime = LimeTabularExplainer(training_data=X.fillna(0).values,
+                                                              feature_names=list(X.columns),
+                                                              mode='regression')
+                        exp = explainer_lime.explain_instance(X.fillna(0).iloc[i_inst].values, model.predict, num_features=min(10, X.shape[1]))
+                        html = exp.as_html()
+                        components.html(html, height=400)
+                    except Exception as e:
+                        st.error(f"Error con LIME: {e}")
+
+                # ---------------------------
+                # Exportar ranking (si existe) y SHAP values opcional
+                # ---------------------------
+                st.markdown("---")
+                st.subheader("Exportar resultados")
+                if 'ranking' in locals():
+                    csv = ranking.to_csv(index=False).encode('utf-8')
+                    st.download_button("Descargar CSV de importancias", data=csv, file_name="importancias_modelo.csv", mime="text/csv")
+                if usar_shap:
+                    try:
+                        # preparar shap_values para exportar: convertir a DataFrame promedio absoluto
+                        import numpy as np
+                        mean_abs_shap = np.abs(shap_values).mean(axis=0)
+                        shap_df = pd.DataFrame({"Variable": X.columns, "MeanAbsSHAP": mean_abs_shap}).sort_values("MeanAbsSHAP", ascending=False)
+                        csv2 = shap_df.to_csv(index=False).encode('utf-8')
+                        st.download_button("Descargar resumen SHAP (Mean abs)", data=csv2, file_name="shap_resumen.csv", mime="text/csv")
+                    except Exception:
+                        st.info("No se pudo exportar SHAP (problema al calcular shap_values).")
+
