@@ -1133,8 +1133,18 @@ with tab_rf:
             excluir = st.multiselect("Variables a excluir del análisis (opcional)", options=[c for c in columnas_disponibles if c != target])
 
             # Construcción de X,y aplicando exclusión y eliminando NaNs en target
-            df_model = datos.drop(columns=["Tiempo"]).copy()
+            # 1. Obtener las columnas de ese desalador
+            columnas_disponibles = columnas_para_desalador(datos.columns, desal_sel)
+            
+            # 2. Construir df_model SOLO con esas columnas
+            df_model = datos[columnas_disponibles].copy()
+            
+            # 3. Quitar NaNs del target
             df_model = df_model.dropna(subset=[target])
+            
+            # 4. Construir X estrictamente filtrado
+            X = df_model.drop(columns=[target])
+
             # eliminar columnas excluidas y la propia target de X
             X = df_model.drop(columns=[target] + excluir, errors='ignore')
             y = df_model[target].astype(float)
