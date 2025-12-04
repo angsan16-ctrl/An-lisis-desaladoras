@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 # para nuevos modelos y explicadores
 import shap
+shap.initjs()  # no hace nada en Streamlit pero evita warnings
 from lime.lime_tabular import LimeTabularExplainer
 import xgboost as xgb
 import lightgbm as lgb
@@ -1190,54 +1191,69 @@ with tab_rf:
                 else:
                     st.info("El modelo seleccionado no proporciona 'feature_importances_' (p.ej. Ridge/Lasso). Usar SHAP para explicaciones detalladas.")
 
-                # ---------------------------
-                # SHAP: resumen, beeswarm, dependence, force
-                # ---------------------------
+                # ===============================
+                # SHAP EN STREAMLIT (TOTALMENTE COMPATIBLE)
+                # ===============================
                 if usar_shap:
                     st.markdown("---")
-                    st.subheader("SHAP - explicaciones globales y locales")
-
+                    st.subheader("SHAP - explicaciones globales y locales (compatibles con Streamlit)")
+                
                     try:
-                        explainer = None
-                        # Para modelos tipo tree, usar TreeExplainer; para lineales usar LinearExplainer o KernelExplainer
+                        # 1) Crear explainer según modelo
                         if modelo_sel in ["Random Forest", "Gradient Boosting", "XGBoost", "LightGBM"]:
                             explainer = shap.TreeExplainer(model)
                             shap_values = explainer.shap_values(X.fillna(0))
                         else:
-                            # Linear/otros
                             explainer = shap.LinearExplainer(model, X.fillna(0), feature_perturbation="interventional")
                             shap_values = explainer.shap_values(X.fillna(0))
-                        # SHAP summary bar
-                        st.write("**SHAP summary (bar)**")
-                        fig = plt.figure(figsize=(8,4))
+                
+                        # Convertir shap_values a array si viene como lista
+                        import numpy as np
+                        if isinstance(shap_values, list):
+                            shap_values = shap_values[0]
+                
+                        # 2) SHAP Summary (bar)
+                        st.write("### SHAP Summary (bar)")
+                        fig = plt.figure(figsize=(8,5))
                         shap.summary_plot(shap_values, X, plot_type="bar", show=False)
                         st.pyplot(fig)
-
-                        # SHAP beeswarm
-                        st.write("**SHAP beeswarm (summary)**")
+                        plt.close(fig)
+                
+                        # 3) SHAP Beeswarm
+                        st.write("### SHAP Beeswarm")
                         fig = plt.figure(figsize=(8,6))
                         shap.summary_plot(shap_values, X, show=False)
                         st.pyplot(fig)
-
-                        # Dependence plot (elige variable)
-                        col_dependence = st.selectbox("Variable para SHAP dependence plot", options=list(X.columns))
-                        st.write(f"Dependence plot para: {col_dependence}")
+                        plt.close(fig)
+                
+                        # 4) SHAP Dependence plot
+                        col_dependence = st.selectbox("Variable para dependence plot", list(X.columns))
                         fig = plt.figure(figsize=(8,6))
-                        # shap.dependence_plot acepta índice o nombre
-                        shap.dependence_plot(col_dependence, shap_values, X.fillna(0), show=False)
+                        shap.dependence_plot(
+                            col_dependence,
+                            shap_values,
+                            X,
+                            ax=plt.gca(),
+                            show=False
+                        )
                         st.pyplot(fig)
-
-                        # Force plot (explicación local de una instancia)
-                        st.write("**Force plot (explicación local)**")
-                        idx_inst = st.number_input("Índice de instancia para force plot (0 .. n-1)", min_value=0, max_value=max(0, len(X)-1), value=0, step=1)
-                        # generar HTML del force plot y renderizar con components.html
-                        try:
-                            shap_html = shap.force_plot(explainer.expected_value, shap_values[idx_inst], X.iloc[idx_inst])._repr_html_()
-                            components.html(shap_html, height=300)
-                        except Exception as e_force:
-                            st.write("No se pudo dibujar force plot (depende de la versión de shap). Error:", e_force)
+                        plt.close(fig)
+                
+                        # 5) Force plot (versión matplotlib, 100% compatible)
+                        st.write("### SHAP Force Plot (local)")
+                        idx_inst = st.number_input("Índice de la instancia", 0, len(X)-1, 0)
+                
+                        fig = shap.plots.force(
+                            explainer.expected_value,
+                            shap_values[idx_inst],
+                            matplotlib=True
+                        )
+                        st.pyplot(fig)
+                        plt.close(fig)
+                
                     except Exception as e:
                         st.error(f"Error calculando SHAP: {e}")
+
 
                 # ---------------------------
                 # LIME: explicación local para una instancia
