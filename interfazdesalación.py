@@ -32,6 +32,7 @@ st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allo
 # =============================================================
 tab_graf, tab_rf = st.tabs(["Graficado", "Análisis"])
 
+
 # =============================================================
 # 1) PESTAÑA GRAFICADO (TODO EL CÓDIGO ORIGINAL)
 # =============================================================
@@ -68,6 +69,25 @@ with tab_graf:
     from openpyxl import Workbook
     from openpyxl.utils.dataframe import dataframe_to_rows
     from openpyxl.drawing.image import Image as xlImage
+    
+logo_path = Path("logo_repsol.png")
+if logo_path.exists():
+    try:
+        logo_original = Image.open(logo_path).convert("RGBA")
+        blur_radius = 8
+        padding = blur_radius * 3
+        new_size = (logo_original.width + padding, logo_original.height + padding)
+        final_logo = Image.new("RGBA", new_size, (255,255,255,0))
+        center_x = (new_size[0] - logo_original.width) // 2
+        center_y = (new_size[1] - logo_original.height) // 2
+        final_logo.paste(logo_original, (center_x, center_y), logo_original)
+        mask = final_logo.split()[3]
+        white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
+        white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
+        final_logo = Image.alpha_composite(white_halo, final_logo)
+        st.image(final_logo, width=140)
+    except Exception:
+        st.info("Error cargando logo_repsol.png")
 
     # -------------------------
     # ConfiguraciÃ³n de la app
@@ -749,24 +769,6 @@ with tab_graf:
     fig_h = st.sidebar.slider("Alto figura", 4, 12, 6)
     st.sidebar.markdown("---")
     # Mostrar logo opcional si estÃ¡
-    logo_path = Path("logo_repsol.png")
-    if logo_path.exists():
-        try:
-            logo_original = Image.open(logo_path).convert("RGBA")
-            blur_radius = 8
-            padding = blur_radius * 3
-            new_size = (logo_original.width + padding, logo_original.height + padding)
-            final_logo = Image.new("RGBA", new_size, (255,255,255,0))
-            center_x = (new_size[0] - logo_original.width) // 2
-            center_y = (new_size[1] - logo_original.height) // 2
-            final_logo.paste(logo_original, (center_x, center_y), logo_original)
-            mask = final_logo.split()[3]
-            white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
-            white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
-            final_logo = Image.alpha_composite(white_halo, final_logo)
-            st.image(final_logo, width=140)
-        except Exception:
-            st.info("Error cargando logo_repsol.png")
 
     # -------------------------
     # Main: cuando hay upload
@@ -1104,21 +1106,23 @@ with tab_rf:
         def columnas_para_desalador(df_cols, desal_sel):
             if desal_sel == "GENERAL":
                 return [c for c in df_cols if c != "Tiempo"]
-            token = desal_sel.lower()
+        
+            token = desal_sel.lower().replace(" ", "").replace("-", "").replace("_", "")
             cols = []
-            comunes = []
+        
             for c in df_cols:
                 if c == "Tiempo":
                     continue
-                if token in str(c).lower().replace(" ", "").replace("-", "").replace("_", ""):
+                
+                cname = str(c).lower().replace(" ", "").replace("-", "").replace("_", "")
+        
+                if token in cname:
                     cols.append(c)
-                else:
-                    # consideramos comunes si no contienen token
-                    comunes.append(c)
-            # devolvemos cols seleccionadas + comunes para permitir uso conjunto
-            return sorted(list(set(cols + comunes)), key=lambda x: str(x))
-        columnas_disponibles = columnas_para_desalador(datos.columns, desal_sel)
-
+        
+            # ← MUY IMPORTANTE: este return debe estar dentro del def con 4 espacios
+            return sorted(cols, key=lambda x: str(x))
+        columnas_disponibles = columnas_para_desalador(datos.columns, desal_sel) 
+        
         # Selección de variable objetivo (Y)
         if not columnas_disponibles:
             st.error("No hay columnas disponibles para análisis.")
@@ -1143,9 +1147,9 @@ with tab_rf:
                     "Random Forest",
                     "Gradient Boosting",
                     "XGBoost",
-                    "LightGBM",
-                    "Ridge",
-                    "Lasso"
+                    "LightGBM",    
+                    "Regresión lineal (OLS)"
+
                 ])
 
                 # Parámetros básicos
@@ -1169,6 +1173,10 @@ with tab_rf:
                     model = Ridge()
                 elif modelo_sel == "Lasso":
                     model = Lasso()
+                elif modelo_sel == "Regresión lineal (OLS)":
+                    from sklearn.linear_model import LinearRegression
+                    model = LinearRegression()
+
 
                 # Entrenamiento
                 with st.spinner("Entrenando modelo..."):
@@ -1213,14 +1221,14 @@ with tab_rf:
                 
                         # 2) SHAP Summary (bar)
                         st.write("### SHAP Summary (bar)")
-                        fig = plt.figure(figsize=(8,5))
+                        fig = plt.figure(figsize=(8,16))
                         shap.summary_plot(shap_values, X, plot_type="bar", show=False)
                         st.pyplot(fig)
                         plt.close(fig)
                 
                         # 3) SHAP Beeswarm
                         st.write("### SHAP Beeswarm")
-                        fig = plt.figure(figsize=(8,6))
+                        fig = plt.figure(figsize=(8,16))
                         shap.summary_plot(shap_values, X, show=False)
                         st.pyplot(fig)
                         plt.close(fig)
@@ -1249,10 +1257,20 @@ with tab_rf:
                         )
                         st.pyplot(fig)
                         plt.close(fig)
+                        
+                        st.write("### SHAP Heatmap")
+                        fig = plt.figure(figsize=(10,7))
+                        shap.plots.heatmap(
+                            shap_values,
+                            max_display=30,
+                            show=False
+                        )
+                        st.pyplot(fig)
+                        plt.close(fig)
+
                 
                     except Exception as e:
                         st.error(f"Error calculando SHAP: {e}")
-
 
                 # ---------------------------
                 # LIME: explicación local para una instancia
@@ -1270,6 +1288,21 @@ with tab_rf:
                         components.html(html, height=400)
                     except Exception as e:
                         st.error(f"Error con LIME: {e}")
+                if modelo_sel in ["Regresión lineal (OLS)", "Ridge", "Lasso"]:
+                    coefs = pd.DataFrame({
+                        "Variable": X.columns,
+                        "Coeficiente": model.coef_
+                    }).sort_values("Coeficiente", ascending=False)
+                
+                    st.subheader("Influencia de cada variable (coeficientes del modelo)")
+                    st.dataframe(coefs)
+                
+                    st.write("""
+                    **Interpretación:**
+                    - Coeficiente positivo → la variable hace *aumentar* la variable base.
+                    - Coeficiente negativo → la variable hace *disminuir* la variable base.
+                    - El valor absoluto indica la influencia relativa.
+                    """)
 
                 # ---------------------------
                 # Exportar ranking (si existe) y SHAP values opcional
