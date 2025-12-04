@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 # para nuevos modelos y explicadores
 import shap
-shap.initjs()  # no hace nada en Streamlit pero evita warnings
 from lime.lime_tabular import LimeTabularExplainer
 import xgboost as xgb
 import lightgbm as lgb
