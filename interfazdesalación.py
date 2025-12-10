@@ -30,7 +30,7 @@ st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allo
 # =============================================================
 # PESTAÑAS PRINCIPALES
 # =============================================================
-tab_graf, tab_rf = st.tabs(["Graficado", "Análisis"])
+tab_graf, tab_rf, tab_modelo = st.tabs(["Graficado", "Análisis", "Modelo"])
 
 
 # =============================================================
@@ -1309,3 +1309,255 @@ with tab_rf:
                     except Exception:
                         st.info("No se pudo exportar SHAP (problema al calcular shap_values).")
 
+# -------------------------
+# PESTAÑA MODELO (Learning Curve + Estabilidad)
+# -------------------------
+with tab_modelo:
+    st.header("Modelo — Curva de aprendizaje y estabilidad")
+
+    if "datos" not in st.session_state:
+        st.warning("Primero carga un archivo en la pestaña 'Graficado'. Luego vuelve aquí.")
+    else:
+        datos = st.session_state["datos"].copy()
+
+        # Función local para listar columnas según desalador (misma lógica que en 'Análisis')
+        def columnas_para_desalador(df_cols, desal_sel):
+            if desal_sel == "GENERAL":
+                return [c for c in df_cols if c != "Tiempo"]
+            token = desal_sel.lower().replace(" ", "").replace("-", "").replace("_", "")
+            cols = []
+            for c in df_cols:
+                if c == "Tiempo":
+                    continue
+                cname = str(c).lower().replace(" ", "").replace("-", "").replace("_", "")
+                if token in cname:
+                    cols.append(c)
+            return sorted(cols, key=lambda x: str(x))
+
+        # Detectar desaladores por token C##
+        import re
+        patron_desal = re.compile(r"(c[\-\_ ]?\d{1,3})", flags=re.IGNORECASE)
+        desaladores_detectados = set()
+        for n in datos.columns:
+            m = patron_desal.search(str(n))
+            if m:
+                desaladores_detectados.add(re.sub(r"[\-_\s]", "", m.group(1)).upper())
+        desaladores_detectados = sorted(list(desaladores_detectados))
+
+        opciones_desal = ["GENERAL"] + desaladores_detectados
+        desal_sel = st.selectbox("Desalador para análisis (MODELO)", options=opciones_desal, index=0)
+
+        # Columnas disponibles para el desalador seleccionado
+        columnas_disponibles = columnas_para_desalador(datos.columns, desal_sel)
+        if not columnas_disponibles:
+            st.error("No hay columnas disponibles para análisis en este desalador.")
+        else:
+            target = st.selectbox("Variable objetivo (Y)", columnas_disponibles)
+
+            # Construir df_model y X,y automáticos (opción 2a: usar todas las columnas disponibles salvo target)
+            df_model = datos[columnas_disponibles].copy()
+            df_model = df_model.dropna(subset=[target])  # quitar filas sin target
+            X_all = df_model.drop(columns=[target])
+            y_all = df_model[target].astype(float)
+
+            if X_all.shape[0] < 10 or X_all.shape[1] == 0:
+                st.error("Hay muy pocos datos válidos o no hay variables para entrenar el modelo.")
+            else:
+                # Modelos (Opción 1: todos)
+                modelo_sel = st.selectbox("Modelo", [
+                    "Random Forest",
+                    "Gradient Boosting",
+                    "XGBoost",
+                    "LightGBM",
+                    "Regresión Lineal (OLS)"
+                ], index=0)
+
+                # Parámetros generales para ambos análisis
+                n_estim = st.slider("Nº árboles (si aplica)", 50, 1000, 200)
+                max_depth = st.slider("Max depth (si aplica, 0=auto)", 0, 30, 6)
+
+                # Parámetros específicos del análisis A y B
+                st.markdown("### A) Curva de aprendizaje")
+                fractions = st.multiselect("Porcentajes de datos a usar para entrenamiento (ej: 0.1 = 10%)",
+                                           options=[0.1, 0.2, 0.4, 0.6, 0.8, 1.0],
+                                           default=[0.1, 0.2, 0.4, 0.6, 0.8, 1.0])
+                if not fractions:
+                    st.info("Selecciona al menos un porcentaje para la curva de aprendizaje.")
+                repeats = st.number_input("Repeticiones por porcentaje (media)", min_value=1, max_value=10, value=3, step=1)
+
+                st.markdown("### B) Estabilidad (repeticiones aleatorias)")
+                n_iter = st.number_input("Número de iteraciones (repeticiones aleatorias)", min_value=5, max_value=200, value=20, step=1)
+
+                # Métricas a calcular
+                from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+                import numpy as np
+                import pandas as pd
+                from sklearn.model_selection import train_test_split
+
+                # Factory para crear el modelo seleccionado
+                def crear_modelo(nombre):
+                    if nombre == "Random Forest":
+                        return RandomForestRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+                    elif nombre == "Gradient Boosting":
+                        return GradientBoostingRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42)
+                    elif nombre == "XGBoost":
+                        try:
+                            return xgb.XGBRegressor(n_estimators=n_estim, max_depth=(0 if max_depth==0 else max_depth), random_state=42, n_jobs=-1, verbosity=0)
+                        except Exception:
+                            st.warning("XGBoost no está disponible; usando GradientBoosting como fallback.")
+                            return GradientBoostingRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42)
+                    elif nombre == "LightGBM":
+                        try:
+                            return lgb.LGBMRegressor(n_estimators=n_estim, max_depth=(-1 if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+                        except Exception:
+                            st.warning("LightGBM no está disponible; usando GradientBoosting como fallback.")
+                            return GradientBoostingRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42)
+                    elif nombre == "Regresión Lineal (OLS)":
+                        from sklearn.linear_model import LinearRegression
+                        return LinearRegression()
+                    else:
+                        return RandomForestRegressor(n_estimators=n_estim, max_depth=(None if max_depth==0 else max_depth), random_state=42, n_jobs=-1)
+
+                # Función auxiliar de métricas
+                def calcular_metricas(y_true, y_pred):
+                    mae = mean_absolute_error(y_true, y_pred)
+                    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+                    r2 = r2_score(y_true, y_pred)
+                    return mae, rmse, r2
+
+                # ---------------------
+                # A) CURVA DE APRENDIZAJE
+                # ---------------------
+                st.markdown("---")
+                st.subheader("A) Curva de aprendizaje — resultados")
+                lc_rows = []
+                if fractions:
+                    progreso = st.progress(0)
+                    total_steps = len(fractions) * repeats
+                    step = 0
+                    for frac in sorted(fractions):
+                        frac = float(frac)
+                        maes, rmses, r2s = [], [], []
+                        for rep in range(int(repeats)):
+                            # sample fraction of available rows (sin forzar orden)
+                            n_samples = max(2, int(frac * len(df_model)))
+                            df_sample = df_model.sample(n=n_samples, random_state=42 + rep)
+                            # dividir en train/test (30% test)
+                            train, test = train_test_split(df_sample, test_size=0.3, random_state=7+rep)
+                            if train.shape[0] < 2 or test.shape[0] < 1:
+                                continue
+                            X_train = train.drop(columns=[target])
+                            y_train = train[target].astype(float)
+                            X_test = test.drop(columns=[target])
+                            y_test = test[target].astype(float)
+
+                            model = crear_modelo(modelo_sel)
+                            try:
+                                model.fit(X_train.fillna(0), y_train)
+                                preds = model.predict(X_test.fillna(0))
+                                mae, rmse, r2 = calcular_metricas(y_test, preds)
+                                maes.append(mae); rmses.append(rmse); r2s.append(r2)
+                            except Exception as e:
+                                # si falla el fitting, lo anotamos como nan
+                                maes.append(np.nan); rmses.append(np.nan); r2s.append(np.nan)
+                            step += 1
+                            progreso.progress(min(100, int(100 * step / total_steps)))
+                        # agregar fila resumen para este porcentaje
+                        lc_rows.append({
+                            "train_frac": frac,
+                            "n_samples": len(df_model) if frac==1.0 else max(1, int(frac * len(df_model))),
+                            "MAE_mean": float(np.nanmean(maes)) if len(maes)>0 else None,
+                            "MAE_std": float(np.nanstd(maes)) if len(maes)>0 else None,
+                            "RMSE_mean": float(np.nanmean(rmses)) if len(rmses)>0 else None,
+                            "RMSE_std": float(np.nanstd(rmses)) if len(rmses)>0 else None,
+                            "R2_mean": float(np.nanmean(r2s)) if len(r2s)>0 else None,
+                            "R2_std": float(np.nanstd(r2s)) if len(r2s)>0 else None,
+                        })
+                    progreso.empty()
+
+                lc_df = pd.DataFrame(lc_rows).sort_values("train_frac")
+                if lc_df.empty:
+                    st.info("No se generaron resultados para la curva de aprendizaje (muestra/fallos).")
+                else:
+                    st.dataframe(lc_df.style.format({"train_frac":"{:.2f}", "MAE_mean":"{:.4f}", "RMSE_mean":"{:.4f}", "R2_mean":"{:.4f}"}))
+                    # Gráfica error vs tamaño (MAE y RMSE)
+                    try:
+                        import matplotlib.pyplot as plt
+                        fig, ax = plt.subplots(figsize=(8,4))
+                        ax.plot(lc_df["train_frac"], lc_df["MAE_mean"], marker='o', label="MAE")
+                        ax.plot(lc_df["train_frac"], lc_df["RMSE_mean"], marker='o', label="RMSE")
+                        ax.set_xlabel("Fracción muestras entrenamiento")
+                        ax.set_ylabel("Error")
+                        ax.set_title("Curva de aprendizaje — Error vs tamaño (promedio)")
+                        ax.grid(True)
+                        ax.legend()
+                        st.pyplot(fig)
+                    except Exception as e:
+                        st.write("Error mostrando gráfica:", e)
+
+                    # Descargar CSV
+                    csv_lc = lc_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("Descargar resultados Curva aprendizaje (CSV)", data=csv_lc, file_name="curva_aprendizaje.csv", mime="text/csv")
+
+                # ---------------------
+                # B) ESTABILIDAD (REPETICIONES ALEATORIAS)
+                # ---------------------
+                st.markdown("---")
+                st.subheader("B) Estabilidad — repeticiones aleatorias")
+                st.write("En cada iteración: *train 70% - test 30%* (aleatorio). Se muestran distribuciones de MAE, RMSE, R².")
+
+                if n_iter < 1:
+                    st.info("Aumenta el número de iteraciones para ver resultados.")
+                else:
+                    instability_rows = []
+                    progreso2 = st.progress(0)
+                    for i in range(int(n_iter)):
+                        # sample train/test desde df_model completo
+                        train, test = train_test_split(df_model.sample(frac=1.0, random_state=42+i), train_size=0.7, random_state=1+i)
+                        if train.shape[0] < 2 or test.shape[0] < 1:
+                            instability_rows.append({"iter": i, "MAE": np.nan, "RMSE": np.nan, "R2": np.nan})
+                            progreso2.progress(int(100*(i+1)/n_iter))
+                            continue
+                        X_train = train.drop(columns=[target])
+                        y_train = train[target].astype(float)
+                        X_test = test.drop(columns=[target])
+                        y_test = test[target].astype(float)
+
+                        model = crear_modelo(modelo_sel)
+                        try:
+                            model.fit(X_train.fillna(0), y_train)
+                            preds = model.predict(X_test.fillna(0))
+                            mae, rmse, r2 = calcular_metricas(y_test, preds)
+                        except Exception as e:
+                            mae, rmse, r2 = (np.nan, np.nan, np.nan)
+
+                        instability_rows.append({"iter": i, "MAE": mae, "RMSE": rmse, "R2": r2})
+                        progreso2.progress(int(100*(i+1)/n_iter))
+                    progreso2.empty()
+
+                    inst_df = pd.DataFrame(instability_rows)
+                    st.dataframe(inst_df.describe().T.style.format("{:.4f}"))
+
+                    # Boxplots
+                    try:
+                        import matplotlib.pyplot as plt
+                        fig2, axs = plt.subplots(1,3, figsize=(12,4))
+                        axs[0].boxplot(inst_df["MAE"].dropna())
+                        axs[0].set_title("MAE")
+                        axs[1].boxplot(inst_df["RMSE"].dropna())
+                        axs[1].set_title("RMSE")
+                        axs[2].boxplot(inst_df["R2"].dropna())
+                        axs[2].set_title("R2")
+                        for ax in axs:
+                            ax.grid(True)
+                        st.pyplot(fig2)
+                    except Exception as e:
+                        st.write("Error mostrando boxplots:", e)
+
+                    # Mostrar tabla completa y permitir descarga
+                    st.subheader("Resultados por iteración")
+                    st.dataframe(inst_df)
+                    csv_inst = inst_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("Descargar resultados estabilidad (CSV)", data=csv_inst, file_name="estabilidad_iteraciones.csv", mime="text/csv")
+
+                st.success("Análisis completado.")
