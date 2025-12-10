@@ -1357,31 +1357,31 @@ with tab_modelo:
             target = st.selectbox("Variable objetivo (Y)",
                                   columnas_disponibles,
                                   key="modelo_target")
-        # =========================================================
-        # NUEVO BLOQUE: Exclusión de variables en pestaña MODELO
-        # =========================================================
-        excluir_modelo = st.multiselect(
-            "Variables a excluir del modelo (opcional)",
-            options=[c for c in columnas_disponibles if c != target],
-            key="modelo_excluir_vars"
-        )
-        
-        # Construir dataset filtrado SOLO con variables permitidas
-        df_model = datos[columnas_disponibles].copy()
-        
-        # Quitar filas donde el target es NaN
-        df_model = df_model.dropna(subset=[target])
-        
-        # Construir X_all respetando las exclusiones seleccionadas
-        X_all = df_model.drop(columns=[target] + excluir_modelo, errors='ignore').copy()
-        
-        # Variable objetivo
-        y_all = df_model[target].astype(float)
-        
-        # Comprobar que queda al menos 1 variable
-        if X_all.shape[1] == 0:
-            st.error("No quedan variables para entrenar el modelo después de aplicar exclusiones.")
-            st.stop()
+            # =========================================================
+            # NUEVO BLOQUE: Exclusión de variables en pestaña MODELO
+            # =========================================================
+            excluir_modelo = st.multiselect(
+                "Variables a excluir del modelo (opcional)",
+                options=[c for c in columnas_disponibles if c != target],
+                key="modelo_excluir_vars"
+            )
+            
+            # Construir dataset filtrado SOLO con variables permitidas
+            df_model = datos[columnas_disponibles].copy()
+            
+            # Quitar filas donde el target es NaN
+            df_model = df_model.dropna(subset=[target])
+            
+            # Construir X_all respetando las exclusiones seleccionadas
+            X_all = df_model.drop(columns=[target] + excluir_modelo, errors='ignore').copy()
+            
+            # Variable objetivo
+            y_all = df_model[target].astype(float)
+            
+            # Comprobar que queda al menos 1 variable
+            if X_all.shape[1] == 0:
+                st.error("No quedan variables para entrenar el modelo después de aplicar exclusiones.")
+                st.stop()
 
 
             df_model = datos[columnas_disponibles].copy()
