@@ -19,6 +19,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import Ridge, Lasso
 import streamlit.components.v1 as components
 import io
+from pathlib import Path
+
 
 # =============================================================
 # CONFIGURACIÓN BÁSICA
@@ -26,6 +28,25 @@ import io
 st.set_page_config(page_title="Análisis desaladoras", layout="wide")
 
 st.markdown("<h1 class='darkblue-title'>Análisis desaladoras</h1>", unsafe_allow_html=True)
+from PIL import Image, ImageFilter
+logo_path = Path("logo_repsol.png")
+if logo_path.exists():
+    try:
+        logo_original = Image.open(logo_path).convert("RGBA")
+        blur_radius = 8
+        padding = blur_radius * 3
+        new_size = (logo_original.width + padding, logo_original.height + padding)
+        final_logo = Image.new("RGBA", new_size, (255,255,255,0))
+        center_x = (new_size[0] - logo_original.width) // 2
+        center_y = (new_size[1] - logo_original.height) // 2
+        final_logo.paste(logo_original, (center_x, center_y), logo_original)
+        mask = final_logo.split()[3]
+        white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
+        white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
+        final_logo = Image.alpha_composite(white_halo, final_logo)
+        st.image(final_logo, width=140)
+    except Exception:
+        st.info("Error cargando logo_repsol.png")
 
 # =============================================================
 # PESTAÑAS PRINCIPALES
@@ -69,25 +90,6 @@ with tab_graf:
     from openpyxl import Workbook
     from openpyxl.utils.dataframe import dataframe_to_rows
     from openpyxl.drawing.image import Image as xlImage
-    
-    logo_path = Path("logo_repsol.png")
-    if logo_path.exists():
-        try:
-            logo_original = Image.open(logo_path).convert("RGBA")
-            blur_radius = 8
-            padding = blur_radius * 3
-            new_size = (logo_original.width + padding, logo_original.height + padding)
-            final_logo = Image.new("RGBA", new_size, (255,255,255,0))
-            center_x = (new_size[0] - logo_original.width) // 2
-            center_y = (new_size[1] - logo_original.height) // 2
-            final_logo.paste(logo_original, (center_x, center_y), logo_original)
-            mask = final_logo.split()[3]
-            white_halo = Image.new("RGBA", final_logo.size, (255, 255, 255, 0))
-            white_halo.putalpha(mask.filter(ImageFilter.GaussianBlur(blur_radius)))
-            final_logo = Image.alpha_composite(white_halo, final_logo)
-            st.image(final_logo, width=140)
-        except Exception:
-            st.info("Error cargando logo_repsol.png")
 
     # -------------------------
     # ConfiguraciÃ³n de la app
