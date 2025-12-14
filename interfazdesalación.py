@@ -1651,6 +1651,8 @@ with tab_red:
         # ===============================
         # LIMPIEZA ROBUSTA MODELO CENTRAL
         # ===============================
+        
+        # Forzar a numérico
         X = df.drop(columns=[target]).apply(pd.to_numeric, errors="coerce")
         y = pd.to_numeric(df[target], errors="coerce")
         
@@ -1661,21 +1663,25 @@ with tab_red:
         # Eliminar columnas completamente vacías
         X = X.dropna(axis=1, how="all")
         
-        # Eliminar filas inválidas
-        mask = X.notna().all(axis=1) & y.notna()
+        # Mantener filas donde y es válido
+        mask = y.notna()
         X = X[mask]
         y = y[mask]
         
+        # Imputación robusta: mediana
+        X = X.fillna(X.median())
+        
         # Seguridad mínima
-        if X.shape[0] < 10:
-            st.error("❌ No hay suficientes filas válidas para entrenar la red neuronal.")
+        if X.shape[0] < 8:
+            st.error("❌ Muy pocos datos válidos para entrenar la red neuronal.")
             st.stop()
         
         if X.shape[1] < 2:
-            st.error("❌ No hay suficientes variables válidas para construir la red.")
+            st.error("❌ No hay suficientes variables para construir la red.")
             st.stop()
         
         st.caption(f"Modelo central: {X.shape[0]} filas × {X.shape[1]} variables")
+
 
 
         from sklearn.neural_network import MLPRegressor
@@ -1758,10 +1764,11 @@ with tab_red:
             X_t = X_t.dropna(axis=1, how="all")
             
             # Eliminar filas inválidas
-            mask_t = X_t.notna().all(axis=1) & y_t.notna()
+            mask_t = y_t.notna()
             X_t = X_t[mask_t]
             y_t = y_t[mask_t]
-            
+            X_t = X_t.fillna(X_t.median())
+
             # Seguridad mínima
             if X_t.shape[0] < 10 or X_t.shape[1] < 2:
                 continue
