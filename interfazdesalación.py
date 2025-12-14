@@ -1638,6 +1638,9 @@ with tab_red:
 
         if df.shape[1] < 3:
             st.error("Se necesitan al menos 3 variables para construir la red.")
+            st.write("Filas con y válida:", y.notna().sum())
+            st.write("Distribución de y:")
+            st.write(y.describe())
             st.stop()
 
         st.write("Este análisis entrena una red neuronal que aprende cómo **todas las variables se afectan entre sí**.")
@@ -1651,7 +1654,14 @@ with tab_red:
         # ===============================
         # LIMPIEZA ROBUSTA MODELO CENTRAL
         # ===============================
+       # Valores por defecto seguros
+        hidden = 20
+        alpha = 0.001
         
+        # Sliders (sobrescriben)
+        hidden = st.slider("Neuronas ocultas", 5, 50, hidden)
+        alpha = st.slider("Regularización (alpha)", 0.0001, 0.1, alpha)
+
         # Forzar a numérico
         X = df.drop(columns=[target]).apply(pd.to_numeric, errors="coerce")
         y = pd.to_numeric(df[target], errors="coerce")
@@ -1670,11 +1680,43 @@ with tab_red:
         
         # Imputación robusta: mediana
         X = X.fillna(X.median())
+        # =====================================
+        # SELECCIÓN AUTOMÁTICA DE MODELO
+        # =====================================
+        n_samples = X.shape[0]
         
-        # Seguridad mínima
-        if X.shape[0] < 8:
-            st.error("❌ Muy pocos datos válidos para entrenar la red neuronal.")
+        if n_samples < 5:
+            st.error("❌ Demasiado pocos datos incluso para un modelo simple.")
             st.stop()
+        
+        elif n_samples < 30:
+            st.warning("⚠️ Pocos datos → usando modelo lineal (Ridge)")
+        
+            from sklearn.linear_model import Ridge
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.pipeline import Pipeline
+        
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("ridge", Ridge(alpha=1.0))
+            ])
+        
+        else:
+            from sklearn.neural_network import MLPRegressor
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.pipeline import Pipeline
+        
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("mlp", MLPRegressor(
+                    hidden_layer_sizes=(hidden,),
+                    max_iter=2000,
+                    random_state=42,
+                    alpha=alpha
+                ))
+            ])
+
+        
         
         if X.shape[1] < 2:
             st.error("❌ No hay suficientes variables para construir la red.")
