@@ -1648,8 +1648,35 @@ with tab_red:
             options=cols
         )
 
-        X = df.drop(columns=[target])
-        y = df[target]
+        # ===============================
+        # LIMPIEZA ROBUSTA MODELO CENTRAL
+        # ===============================
+        X = df.drop(columns=[target]).apply(pd.to_numeric, errors="coerce")
+        y = pd.to_numeric(df[target], errors="coerce")
+        
+        # Eliminar infinitos
+        X = X.replace([np.inf, -np.inf], np.nan)
+        y = y.replace([np.inf, -np.inf], np.nan)
+        
+        # Eliminar columnas completamente vacías
+        X = X.dropna(axis=1, how="all")
+        
+        # Eliminar filas inválidas
+        mask = X.notna().all(axis=1) & y.notna()
+        X = X[mask]
+        y = y[mask]
+        
+        # Seguridad mínima
+        if X.shape[0] < 10:
+            st.error("❌ No hay suficientes filas válidas para entrenar la red neuronal.")
+            st.stop()
+        
+        if X.shape[1] < 2:
+            st.error("❌ No hay suficientes variables válidas para construir la red.")
+            st.stop()
+        
+        st.caption(f"Modelo central: {X.shape[0]} filas × {X.shape[1]} variables")
+
 
         from sklearn.neural_network import MLPRegressor
         from sklearn.preprocessing import StandardScaler
