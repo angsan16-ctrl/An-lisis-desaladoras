@@ -1717,8 +1717,27 @@ with tab_red:
             if t == "Tiempo":
                 continue
 
-            X_t = df.drop(columns=[t])
-            y_t = df[t]
+            # ===============================
+            # LIMPIEZA ROBUSTA POR VARIABLE t
+            # ===============================
+            X_t = df.drop(columns=[t]).apply(pd.to_numeric, errors="coerce")
+            y_t = pd.to_numeric(df[t], errors="coerce")
+            
+            # Eliminar infinitos
+            X_t = X_t.replace([np.inf, -np.inf], np.nan)
+            y_t = y_t.replace([np.inf, -np.inf], np.nan)
+            
+            # Eliminar columnas vacías
+            X_t = X_t.dropna(axis=1, how="all")
+            
+            # Eliminar filas inválidas
+            mask_t = X_t.notna().all(axis=1) & y_t.notna()
+            X_t = X_t[mask_t]
+            y_t = y_t[mask_t]
+            
+            # Seguridad mínima
+            if X_t.shape[0] < 10 or X_t.shape[1] < 2:
+                continue
 
             model_t = Pipeline([
                 ("scaler", StandardScaler()),
