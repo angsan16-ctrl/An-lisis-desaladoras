@@ -51,7 +51,9 @@ if logo_path.exists():
 # =============================================================
 # PESTAÑAS PRINCIPALES
 # =============================================================
-tab_graf, tab_rf, tab_modelo = st.tabs(["Graficado", "Análisis", "Modelo"])
+tab_graf, tab_rf, tab_modelo, tab_red = st.tabs(
+    ["Graficado", "Análisis", "Modelo", "Red neuronal"]
+)
 
 
 # =============================================================
@@ -1619,3 +1621,149 @@ with tab_modelo:
                 )
 
                 st.success("Análisis completado.")
+# =============================================================
+# 4) PESTAÑA RED NEURONAL — interconexión entre variables
+# =============================================================
+with tab_red:
+    st.header("🧠 Red neuronal — interdependencia entre variables")
+
+    if "datos" not in st.session_state:
+        st.warning("Primero carga datos en la pestaña Graficado.")
+    else:
+        datos = st.session_state["datos"].copy()
+
+        # Usamos solo columnas numéricas
+        cols = [c for c in datos.columns if c != "Tiempo"]
+        df = datos[cols].dropna()
+
+        if df.shape[1] < 3:
+            st.error("Se necesitan al menos 3 variables para construir la red.")
+            st.stop()
+
+        st.write("Este análisis entrena una red neuronal que aprende cómo **todas las variables se afectan entre sí**.")
+
+        # Selección de variable objetivo
+        target = st.selectbox(
+            "Variable a explicar (nodo central)",
+            options=cols
+        )
+
+        X = df.drop(columns=[target])
+        y = df[target]
+
+        from sklearn.neural_network import MLPRegressor
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.pipeline import Pipeline
+
+        # Parámetros simples
+        hidden = st.slider("Neuronas ocultas", 5, 50, 20)
+        alpha = st.slider("Regularización (alpha)", 0.0001, 0.1, 0.001, format="%.4f")
+
+        model = Pipeline([
+            ("scaler", StandardScaler()),
+            ("mlp", MLPRegressor(
+                hidden_layer_sizes=(hidden,),
+                max_iter=2000,
+                random_state=42,
+                alpha=alpha
+            ))
+        ])
+
+        with st.spinner("Entrenando red neuronal..."):
+            model.fit(X, y)
+
+        st.success("Red neuronal entrenada")
+
+        # ======================================
+        # IMPORTANCIA POR PERMUTACIÓN
+        # ======================================
+        from sklearn.inspection import permutation_importance
+
+        r = permutation_importance(
+            model,
+            X,
+            y,
+            n_repeats=10,
+            random_state=42
+        )
+
+        imp = pd.DataFrame({
+            "Variable": X.columns,
+            "Influencia": r.importances_mean
+        }).sort_values("Influencia", ascending=False)
+
+        st.subheader("🔗 Influencia de cada variable sobre la variable objetivo")
+        st.dataframe(imp)
+
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(8, max(4, 0.3 * len(imp))))
+        ax.barh(imp["Variable"], imp["Influencia"])
+        ax.invert_yaxis()
+        ax.set_xlabel("Influencia aprendida por la red")
+        ax.set_title(f"Red neuronal → efecto sobre '{target}'")
+        ax.grid(True)
+        st.pyplot(fig)
+
+        # ======================================
+        # MATRIZ DE INTERACCIONES (visión sistémica)
+        # ======================================
+        st.markdown("---")
+        st.subheader("🌐 Mapa de interacciones entre TODAS las variables")
+
+        interacciones = []
+
+        for t in cols:
+            if t == "Tiempo":
+                continue
+
+            X_t = df.drop(columns=[t])
+            y_t = df[t]
+
+            model_t = Pipeline([
+                ("scaler", StandardScaler()),
+                ("mlp", MLPRegressor(
+                    hidden_layer_sizes=(hidden,),
+                    max_iter=1500,
+                    random_state=42,
+                    alpha=alpha
+                ))
+            ])
+
+            model_t.fit(X_t, y_t)
+
+            r_t = permutation_importance(
+                model_t,
+                X_t,
+                y_t,
+                n_repeats=5,
+                random_state=42
+            )
+
+            for v, val in zip(X_t.columns, r_t.importances_mean):
+                interacciones.append({
+                    "Origen": v,
+                    "Destino": t,
+                    "Influencia": val
+                })
+
+        net_df = pd.DataFrame(interacciones)
+
+        st.dataframe(
+            net_df.sort_values("Influencia", ascending=False).head(50)
+        )
+
+        st.info("""
+        🔍 **Interpretación**
+        - Cada fila indica cómo una variable **Origen** afecta a otra **Destino**
+        - Cuanto mayor la influencia → mayor dependencia
+        - Esto es una **red neuronal sistémica**, no una correlación simple
+        """)
+
+        # Exportar
+        st.download_button(
+            "Descargar red de interacciones (CSV)",
+            net_df.to_csv(index=False).encode("utf-8"),
+            file_name="red_interacciones_neuronales.csv",
+            mime="text/csv"
+        )
