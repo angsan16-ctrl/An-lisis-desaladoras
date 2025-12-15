@@ -1622,243 +1622,138 @@ with tab_modelo:
 
                 st.success("Análisis completado.")
 # =============================================================
-# 4) PESTAÑA RED NEURONAL — interconexión entre variables
+# 4) PESTAÑA RED NEURONAL — análisis por desaladora / hoja
 # =============================================================
 with tab_red:
-    st.header("🧠 Red neuronal — interdependencia entre variables")
+    st.header("🧠 Red neuronal sistémica (por desaladora)")
 
-    if "datos" not in st.session_state:
-        st.warning("Primero carga datos en la pestaña Graficado.")
-    else:
-        datos = st.session_state["datos"].copy()
+    if "hojas" not in st.session_state or not st.session_state["hojas"]:
+        st.warning("Primero carga el Excel con hojas en la pestaña inicial.")
+        st.stop()
 
-        # Usamos solo columnas numéricas
-        cols = [c for c in datos.columns if c != "Tiempo"]
-        df = datos[cols].dropna()
+    import numpy as np
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.neural_network import MLPRegressor
+    from sklearn.pipeline import Pipeline
+    from sklearn.inspection import permutation_importance
 
-        if df.shape[1] < 3:
-            st.error("Se necesitan al menos 3 variables para construir la red.")
-            st.write("Filas con y válida:", y.notna().sum())
-            st.write("Distribución de y:")
-            st.write(y.describe())
-            st.stop()
+    # =========================================================
+    # CONSTRUCCIÓN DEL DATASET SISTÉMICO (1 fila = 1 hoja)
+    # =========================================================
+    registros = []
+    nombres = []
 
-        st.write("Este análisis entrena una red neuronal que aprende cómo **todas las variables se afectan entre sí**.")
+    for nombre_hoja, df in st.session_state["hojas"].items():
 
-        # Selección de variable objetivo
-        target = st.selectbox(
-            "Variable a explicar (nodo central)",
-            options=cols
-        )
+        # Solo columnas numéricas
+        df_num = df.select_dtypes(include=[np.number])
 
-        # ===============================
-        # LIMPIEZA ROBUSTA MODELO CENTRAL
-        # ===============================
-       # Valores por defecto seguros
-        hidden = 20
-        alpha = 0.001
-        
-        # Sliders (sobrescriben)
-        hidden = st.slider("Neuronas ocultas", 5, 50, hidden)
-        alpha = st.slider("Regularización (alpha)", 0.0001, 0.1, alpha)
+        if df_num.empty:
+            continue
 
-        # Forzar a numérico
-        X = df.drop(columns=[target]).apply(pd.to_numeric, errors="coerce")
-        y = pd.to_numeric(df[target], errors="coerce")
-        
-        # Eliminar infinitos
-        X = X.replace([np.inf, -np.inf], np.nan)
-        y = y.replace([np.inf, -np.inf], np.nan)
-        
-        # Eliminar columnas completamente vacías
-        X = X.dropna(axis=1, how="all")
-        
-        # Mantener filas donde y es válido
-        mask = y.notna()
-        X = X[mask]
-        y = y[mask]
-        
-        # Imputación robusta: mediana
-        X = X.fillna(X.median())
-        # =====================================
-        # SELECCIÓN AUTOMÁTICA DE MODELO
-        # =====================================
-        n_samples = X.shape[0]
-        
-        if n_samples < 5:
-            st.error("❌ Demasiado pocos datos incluso para un modelo simple.")
-            st.stop()
-        
-        elif n_samples < 30:
-            st.warning("⚠️ Pocos datos → usando modelo lineal (Ridge)")
-        
-            from sklearn.linear_model import Ridge
-            from sklearn.preprocessing import StandardScaler
-            from sklearn.pipeline import Pipeline
-        
-            model = Pipeline([
-                ("scaler", StandardScaler()),
-                ("ridge", Ridge(alpha=1.0))
-            ])
-        
-        else:
-            from sklearn.neural_network import MLPRegressor
-            from sklearn.preprocessing import StandardScaler
-            from sklearn.pipeline import Pipeline
-        
-            model = Pipeline([
-                ("scaler", StandardScaler()),
-                ("mlp", MLPRegressor(
-                    hidden_layer_sizes=(hidden,),
-                    max_iter=2000,
-                    random_state=42,
-                    alpha=alpha
-                ))
-            ])
+        resumen = {}
 
-        
-        
-        if X.shape[1] < 2:
-            st.error("❌ No hay suficientes variables para construir la red.")
-            st.stop()
-        
-        st.caption(f"Modelo central: {X.shape[0]} filas × {X.shape[1]} variables")
+        for col in df_num.columns:
+            resumen[f"{col}_mean"] = df_num[col].mean()
+            resumen[f"{col}_std"]  = df_num[col].std()
+            resumen[f"{col}_min"]  = df_num[col].min()
+            resumen[f"{col}_max"]  = df_num[col].max()
 
+        registros.append(resumen)
+        nombres.append(nombre_hoja)
 
+    df_sys = pd.DataFrame(registros, index=nombres)
 
-        from sklearn.neural_network import MLPRegressor
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.pipeline import Pipeline
+    # Limpieza final
+    df_sys = df_sys.replace([np.inf, -np.inf], np.nan)
+    df_sys = df_sys.dropna(axis=1, how="all")
+    df_sys = df_sys.fillna(df_sys.median())
 
-        # Parámetros simples
-        hidden = st.slider("Neuronas ocultas", 5, 50, 20)
-        alpha = st.slider("Regularización (alpha)", 0.0001, 0.1, 0.001, format="%.4f")
+    st.subheader("📊 Dataset sistémico construido")
+    st.caption(f"{df_sys.shape[0]} desaladoras × {df_sys.shape[1]} variables")
+    st.dataframe(df_sys)
 
-        model = Pipeline([
-            ("scaler", StandardScaler()),
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(hidden,),
-                max_iter=2000,
-                random_state=42,
-                alpha=alpha
-            ))
-        ])
+    if df_sys.shape[0] < 3 or df_sys.shape[1] < 3:
+        st.error("No hay suficientes desaladoras o variables para construir la red neuronal.")
+        st.stop()
 
-        with st.spinner("Entrenando red neuronal..."):
-            model.fit(X, y)
+    # =========================================================
+    # PARÁMETROS DE LA RED
+    # =========================================================
+    hidden = st.slider("Neuronas ocultas", 5, 50, 15)
+    alpha = st.slider("Regularización (alpha)", 0.0001, 0.1, 0.001, format="%.4f")
 
-        st.success("Red neuronal entrenada")
+    base_model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("mlp", MLPRegressor(
+            hidden_layer_sizes=(hidden,),
+            max_iter=3000,
+            random_state=42,
+            alpha=alpha
+        ))
+    ])
 
-        # ======================================
-        # IMPORTANCIA POR PERMUTACIÓN
-        # ======================================
-        from sklearn.inspection import permutation_importance
+    # =========================================================
+    # ENTRENAMIENTO SISTÉMICO (una red por variable)
+    # =========================================================
+    interacciones = []
 
-        r = permutation_importance(
-            model,
-            X,
-            y,
-            n_repeats=10,
-            random_state=42
-        )
+    X_full = df_sys.copy()
 
-        imp = pd.DataFrame({
-            "Variable": X.columns,
-            "Influencia": r.importances_mean
-        }).sort_values("Influencia", ascending=False)
+    with st.spinner("Entrenando red neuronal sistémica..."):
+        for target in X_full.columns:
+            y = X_full[target]
+            X = X_full.drop(columns=[target])
 
-        st.subheader("🔗 Influencia de cada variable sobre la variable objetivo")
-        st.dataframe(imp)
-
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(figsize=(8, max(4, 0.3 * len(imp))))
-        ax.barh(imp["Variable"], imp["Influencia"])
-        ax.invert_yaxis()
-        ax.set_xlabel("Influencia aprendida por la red")
-        ax.set_title(f"Red neuronal → efecto sobre '{target}'")
-        ax.grid(True)
-        st.pyplot(fig)
-
-        # ======================================
-        # MATRIZ DE INTERACCIONES (visión sistémica)
-        # ======================================
-        st.markdown("---")
-        st.subheader("🌐 Mapa de interacciones entre TODAS las variables")
-
-        interacciones = []
-
-        for t in cols:
-            if t == "Tiempo":
+            if X.shape[1] < 2:
                 continue
 
-            # ===============================
-            # LIMPIEZA ROBUSTA POR VARIABLE t
-            # ===============================
-            X_t = df.drop(columns=[t]).apply(pd.to_numeric, errors="coerce")
-            y_t = pd.to_numeric(df[t], errors="coerce")
-            
-            # Eliminar infinitos
-            X_t = X_t.replace([np.inf, -np.inf], np.nan)
-            y_t = y_t.replace([np.inf, -np.inf], np.nan)
-            
-            # Eliminar columnas vacías
-            X_t = X_t.dropna(axis=1, how="all")
-            
-            # Eliminar filas inválidas
-            mask_t = y_t.notna()
-            X_t = X_t[mask_t]
-            y_t = y_t[mask_t]
-            X_t = X_t.fillna(X_t.median())
+            try:
+                base_model.fit(X, y)
 
-            # Seguridad mínima
-            if X_t.shape[0] < 10 or X_t.shape[1] < 2:
+                r = permutation_importance(
+                    base_model,
+                    X,
+                    y,
+                    n_repeats=15,
+                    random_state=42
+                )
+
+                for var, imp in zip(X.columns, r.importances_mean):
+                    interacciones.append({
+                        "Origen": var,
+                        "Destino": target,
+                        "Influencia": imp
+                    })
+            except Exception:
                 continue
 
-            model_t = Pipeline([
-                ("scaler", StandardScaler()),
-                ("mlp", MLPRegressor(
-                    hidden_layer_sizes=(hidden,),
-                    max_iter=1500,
-                    random_state=42,
-                    alpha=alpha
-                ))
-            ])
+    net_df = pd.DataFrame(interacciones)
 
-            model_t.fit(X_t, y_t)
+    if net_df.empty:
+        st.error("No se pudieron calcular interacciones entre variables.")
+        st.stop()
 
-            r_t = permutation_importance(
-                model_t,
-                X_t,
-                y_t,
-                n_repeats=5,
-                random_state=42
-            )
+    net_df = net_df.sort_values("Influencia", ascending=False)
 
-            for v, val in zip(X_t.columns, r_t.importances_mean):
-                interacciones.append({
-                    "Origen": v,
-                    "Destino": t,
-                    "Influencia": val
-                })
+    # =========================================================
+    # RESULTADOS
+    # =========================================================
+    st.subheader("🌐 Red de influencias entre variables")
+    st.dataframe(net_df.head(40))
 
-        net_df = pd.DataFrame(interacciones)
+    st.info("""
+    🔍 **Interpretación**
+    - Cada fila representa una influencia aprendida por la red
+    - *Origen → Destino* indica dependencia sistémica
+    - Mayor influencia = mayor impacto potencial
+    - No es correlación simple
+    """)
 
-        st.dataframe(
-            net_df.sort_values("Influencia", ascending=False).head(50)
-        )
-
-        st.info("""
-        🔍 **Interpretación**
-        - Cada fila indica cómo una variable **Origen** afecta a otra **Destino**
-        - Cuanto mayor la influencia → mayor dependencia
-        - Esto es una **red neuronal sistémica**, no una correlación simple
-        """)
-
-        # Exportar
-        st.download_button(
-            "Descargar red de interacciones (CSV)",
-            net_df.to_csv(index=False).encode("utf-8"),
-            file_name="red_interacciones_neuronales.csv",
-            mime="text/csv"
-        )
+    # Descargar resultados
+    st.download_button(
+        "📥 Descargar red neuronal (CSV)",
+        net_df.to_csv(index=False).encode("utf-8"),
+        file_name="red_neuronal_sistemica_desaladoras.csv",
+        mime="text/csv"
+    )
