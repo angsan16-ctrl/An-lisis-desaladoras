@@ -1627,9 +1627,19 @@ with tab_modelo:
 with tab_red:
     st.header("🧠 Red neuronal sistémica (por desaladora)")
 
-    if "hojas" not in st.session_state or not st.session_state["hojas"]:
-        st.warning("Primero carga el Excel con hojas en la pestaña inicial.")
+    if "datos" not in st.session_state:
+        st.warning("Primero carga el Excel en la pestaña inicial.")
         st.stop()
+
+    # Intentar leer el Excel completo por hojas
+    excel_file = st.session_state.get("excel_file", None)
+    
+    if excel_file is None:
+        st.error("No se encontró el archivo Excel original para leer las hojas.")
+        st.stop()
+    
+    xls = pd.ExcelFile(excel_file)
+
 
     import numpy as np
     from sklearn.preprocessing import StandardScaler
