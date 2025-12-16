@@ -1625,7 +1625,7 @@ with tab_modelo:
 # 4) PESTAÑA RED NEURONAL — análisis por desaladora / hoja
 # =============================================================
 with tab_red:
-    st.header("🧠 Red neuronal sistémica (por desaladora)")
+    st.header("Red neuronal sistémica (por desaladora)")
 
     if "datos" not in st.session_state:
         st.warning("Primero carga el Excel en la pestaña inicial.")
